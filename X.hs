@@ -14,11 +14,15 @@ import GHC.Exts
 import Data.Foldable (null)
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Map (Map, (!))
+import qualified Data.Map as Map
 import Data.Matrix (Matrix, matrix)
 import qualified Data.Matrix as Matrix
 import qualified Data.List as List
-import Data.Array (Array, listArray)
-import qualified Data.Array as Array
+import Data.Tuple (swap)
+
+inverseLookup :: Eq v => Map k v -> v -> [k]
+inverseLookup m v = fmap snd . filter ((== v) . fst) . fmap swap . Map.assocs $ m
 
 e1 = Set.fromList [ interval x (x + 2) | x <- [1..10] ]
 e2 = Set.fromList [ interval 1 3, interval 2 4, interval 5 7 ]
@@ -33,25 +37,26 @@ normalize u = _z
 -- -- But I cannot consider transitive closure of a relation by itself --- it is not finite. I should
 -- -- rather consider it with regard to the set at hand.
 
-newtype Relation = Relation { unRelation :: Matrix Bool }  -- Invariant: square.
+data Relation a = Relation { table :: Matrix Bool, indices :: Map Int a }  -- Invariant: square.
 
-relation :: Ord a => Set a -> (a -> a -> Bool) -> Relation
-relation u f = let n = Set.size u
-                   a = (listArray (1, n) . toList) u
-               in Relation $ matrix n n (\(i, j) -> (a Array.! i) `f` (a Array.! j))
+relation :: Ord a => Set a -> (a -> a -> Bool) -> Relation a
+relation u f = Relation{..} where
+        n = Set.size u
+        table = matrix n n (\(i, j) -> (indices ! i) `f` (indices ! j))
+        indices = Map.fromDistinctAscList $ zip [1..] (Set.toAscList u)
 
-(?) :: Relation -> (Int, Int) -> Bool
-(Relation u) ? (x, y) = Matrix.getElem x y u
+(?) :: Eq a => Relation a -> (a, a) -> Bool
+Relation{..} ? (x, y) = let { [i] = inverseLookup indices x ; [j] = inverseLookup indices y }
+                        in Matrix.getElem i j table
 
-empty (Relation u) = null u
+-- Check: ? on a relation is the same as the original operation.
 
-indices :: Relation -> [Int]
-indices (Relation u) = [1.. Matrix.nrows u]
+empty = null . indices
 
-randomIndex :: Relation -> Gen Int
-randomIndex (Relation u) = choose (1, Matrix.nrows u)
+randomIndex :: Relation a -> Gen a
+randomIndex = oneof . fmap return . Map.elems . indices
 
-isReflexive, isSymmetric, isTransitive :: Relation -> Property
+isReflexive, isSymmetric, isTransitive :: (Eq a, Show a) => Relation a -> Property
 
 isReflexive r = if empty r then property True else
     forAll (randomIndex r) \x ->
@@ -76,8 +81,9 @@ instance Num Bool where
     signum = id
     fromInteger = odd
 
-closure :: Relation -> Relation
-closure = Relation . last . converge . scanl1 Matrix.multStd . repeat . unRelation
+closure :: Relation a -> Relation a
+closure Relation{..} = let f = last . converge . scanl1 Matrix.multStd . repeat
+                       in Relation { table = f table, .. }
 
 converge = convergeBy (==)
 
