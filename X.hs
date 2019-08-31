@@ -20,11 +20,23 @@ import Data.Matrix (Matrix, matrix)
 import qualified Data.Matrix as Matrix
 import qualified Data.List as List
 import Data.Tuple (swap)
-import Test.Tasty.QuickCheck
+import Test.Tasty.QuickCheck hiding (classify)
+import qualified Test.Tasty.QuickCheck as QuickCheck
 import Test.Tasty
+import Data.Function
 
 inverseLookup :: Eq v => Map k v -> v -> [k]
 inverseLookup m v = fmap snd . filter ((== v) . fst) . fmap swap . Map.assocs $ m
+
+classify :: Ord a => Set a -> Set (Set a)
+classify = classifyBy (==)
+
+classifyBy :: Ord a => (a -> a -> Bool) -> Set a -> Set (Set a)
+classifyBy eq = Set.fromList . Map.elems . List.foldl' f Map.empty . Set.toList
+  where
+    f m x = case List.find (`eq` x) (Map.keys m) of
+        Just k  -> Map.insertWith Set.union k (Set.singleton x) m
+        Nothing -> Map.insert x (Set.singleton x) m
 
 e1 = Set.fromList [ interval x (x + 2) | x <- [1..10] ]
 e2 = Set.fromList [ interval 1 3, interval 2 4, interval 5 7 ]
@@ -158,15 +170,23 @@ coveringChains x ys = base ++ recursive
 -- 2. Minimal: If any element is removed, does not subsume anymore.
 
 displayingRelation :: Testable prop => (Set Int -> (Int -> Int -> Bool) -> Relation Int -> prop) -> Property
-displayingRelation p = forAllShrink arbitrary shrink \(Blind f) -> forAllShrink arbitrary shrink \xs ->
-    let rel = relation xs f in counterexample (show xs) . counterexample (show rel) $ (p xs f rel)
+displayingRelation p = forAllShrink arbitrary shrink \(Blind (MostlyNot f)) -> forAllShrink arbitrary shrink \xs ->
+    let rel = relation xs f in counterexample (show rel) $ (p xs f rel)
+
+oneOfSet :: (Testable prop, Show a, Arbitrary a) => Set a -> (a -> prop) -> Property
+oneOfSet set = forAll ((oneof . fmap return . Set.toList) set)
+
+newtype MostlyNot = MostlyNot (Int -> Int -> Bool)
+
+instance Arbitrary MostlyNot where
+    arbitrary = do
+        f <- arbitrary
+        return $ MostlyNot \x y -> if x * y `mod` 11 == 0 then f x y else False
 
 main = defaultMain $ testGroup ""
     [ testProperty "The relation type is isomorphic to the original relation" $
         displayingRelation \xs f rel -> if null xs then property True else
-            forAllShrink ((oneof . fmap return . Set.toList) xs) shrink \x ->
-            forAllShrink ((oneof . fmap return . Set.toList) xs) shrink \y ->
-            rel ? (x, y) ==  x `f` y
+            oneOfSet xs \x -> oneOfSet xs \y -> rel ? (x, y) ==  x `f` y
     , testProperty "A relation is not necessarily reflexive" $ expectFailure $
         displayingRelation \_ _ rel -> isReflexive rel
     , testProperty "Reflexive closure of a relation is reflexive" $
@@ -179,4 +199,36 @@ main = defaultMain $ testGroup ""
         displayingRelation \_ _ rel -> isTransitive rel
     , testProperty "Transitive closure of a relation is transitive" $
         displayingRelation \_ _ rel -> (isTransitive . transitiveClosure) rel
+    , testProperty "Union inverts classification" $
+        displayingRelation \xs f rel ->
+            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                classes = classifyBy (curry (equivalence ?)) xs
+            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $
+                    Set.unions classes == xs
+    , testProperty "Intersection of a classification is empty" $
+        displayingRelation \xs f rel -> if Set.null xs then property True else
+            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                classes = classifyBy (curry (equivalence ?)) xs
+            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
+                    if Set.size classes == 1 then classes == Set.singleton xs else
+                        foldr1 Set.intersection classes == Set.empty
+    , testProperty "Belonging to the same class = equivalent by the defining relation" $
+        displayingRelation \xs f rel -> if Set.null xs then property True else
+            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                classes = classifyBy (curry (equivalence ?)) xs
+                (===) :: Int -> Int -> Bool
+                (===) = (==) `on` \x -> Set.filter (x `Set.member`) classes
+            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
+                    oneOfSet xs \x -> oneOfSet xs \y ->
+                    counterexample (show $ Set.filter (x `Set.member`) classes) $
+                    counterexample (show $ Set.filter (y `Set.member`) classes) $
+                    counterexample (show equivalence) $
+                        equivalence ? (x, y) == (x === y)
+    , testProperty "Every element belongs to exactly one class" $
+        displayingRelation \xs f rel -> if Set.null xs then property True else
+            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                classes = classifyBy (curry (equivalence ?)) xs
+            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
+                    counterexample (show classes) $ counterexample (show equivalence) $
+                        length (Set.unions classes) == (sum . fmap length . Set.toList) classes
     ]
