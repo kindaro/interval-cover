@@ -183,52 +183,56 @@ instance Arbitrary MostlyNot where
         f <- arbitrary
         return $ MostlyNot \x y -> if x * y `mod` 11 == 0 then f x y else False
 
-main = defaultMain $ testGroup ""
-    [ testProperty "The relation type is isomorphic to the original relation" $
-        displayingRelation \xs f rel -> if null xs then property True else
-            oneOfSet xs \x -> oneOfSet xs \y -> rel ? (x, y) ==  x `f` y
-    , testProperty "A relation is not necessarily reflexive" $ expectFailure $
-        displayingRelation \_ _ rel -> isReflexive rel
-    , testProperty "Reflexive closure of a relation is reflexive" $
-        displayingRelation \_ _ rel -> (isReflexive . reflexiveClosure) rel
-    , testProperty "A relation is not necessarily symmetric" $ expectFailure $
-        displayingRelation \_ _ rel -> isSymmetric rel
-    , testProperty "Symmetric closure of a relation is symmetric" $
-        displayingRelation \_ _ rel -> (isSymmetric . symmetricClosure) rel
-    , testProperty "A relation is not necessarily transitive" $ expectFailure $
-        displayingRelation \_ _ rel -> isTransitive rel
-    , testProperty "Transitive closure of a relation is transitive" $
-        displayingRelation \_ _ rel -> (isTransitive . transitiveClosure) rel
-    , testProperty "Union inverts classification" $
-        displayingRelation \xs f rel ->
-            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
-                classes = classifyBy (curry (equivalence ?)) xs
-            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $
-                    Set.unions classes == xs
-    , testProperty "Intersection of a classification is empty" $
-        displayingRelation \xs f rel -> if Set.null xs then property True else
-            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
-                classes = classifyBy (curry (equivalence ?)) xs
-            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
-                    if Set.size classes == 1 then classes == Set.singleton xs else
-                        foldr1 Set.intersection classes == Set.empty
-    , testProperty "Belonging to the same class = equivalent by the defining relation" $
-        displayingRelation \xs f rel -> if Set.null xs then property True else
-            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
-                classes = classifyBy (curry (equivalence ?)) xs
-                (===) :: Int -> Int -> Bool
-                (===) = (==) `on` \x -> Set.filter (x `Set.member`) classes
-            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
-                    oneOfSet xs \x -> oneOfSet xs \y ->
-                    counterexample (show $ Set.filter (x `Set.member`) classes) $
-                    counterexample (show $ Set.filter (y `Set.member`) classes) $
-                    counterexample (show equivalence) $
-                        equivalence ? (x, y) == (x === y)
-    , testProperty "Every element belongs to exactly one class" $
-        displayingRelation \xs f rel -> if Set.null xs then property True else
-            let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
-                classes = classifyBy (curry (equivalence ?)) xs
-            in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
-                    counterexample (show classes) $ counterexample (show equivalence) $
-                        length (Set.unions classes) == (sum . fmap length . Set.toList) classes
+main = defaultMain $ testGroup "Properties."
+    [ testGroup "Relations."
+        [ testProperty "The relation type is isomorphic to the original relation" $
+            displayingRelation \xs f rel -> if null xs then property True else
+                oneOfSet xs \x -> oneOfSet xs \y -> rel ? (x, y) ==  x `f` y
+        , testProperty "A relation is not necessarily reflexive" $ expectFailure $
+            displayingRelation \_ _ rel -> isReflexive rel
+        , testProperty "Reflexive closure of a relation is reflexive" $
+            displayingRelation \_ _ rel -> (isReflexive . reflexiveClosure) rel
+        , testProperty "A relation is not necessarily symmetric" $ expectFailure $
+            displayingRelation \_ _ rel -> isSymmetric rel
+        , testProperty "Symmetric closure of a relation is symmetric" $
+            displayingRelation \_ _ rel -> (isSymmetric . symmetricClosure) rel
+        , testProperty "A relation is not necessarily transitive" $ expectFailure $
+            displayingRelation \_ _ rel -> isTransitive rel
+        , testProperty "Transitive closure of a relation is transitive" $
+            displayingRelation \_ _ rel -> (isTransitive . transitiveClosure) rel
+        ]
+    , testGroup "Classification."
+        [ testProperty "Union inverts classification" $
+            displayingRelation \xs f rel ->
+                let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                    classes = classifyBy (curry (equivalence ?)) xs
+                in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $
+                        Set.unions classes == xs
+        , testProperty "Intersection of a classification is empty" $
+            displayingRelation \xs f rel -> if Set.null xs then property True else
+                let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                    classes = classifyBy (curry (equivalence ?)) xs
+                in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
+                        if Set.size classes == 1 then classes == Set.singleton xs else
+                            foldr1 Set.intersection classes == Set.empty
+        , testProperty "Belonging to the same class = equivalent by the defining relation" $
+            displayingRelation \xs f rel -> if Set.null xs then property True else
+                let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                    classes = classifyBy (curry (equivalence ?)) xs
+                    (===) :: Int -> Int -> Bool
+                    (===) = (==) `on` \x -> Set.filter (x `Set.member`) classes
+                in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
+                        oneOfSet xs \x -> oneOfSet xs \y ->
+                        counterexample (show $ Set.filter (x `Set.member`) classes) $
+                        counterexample (show $ Set.filter (y `Set.member`) classes) $
+                        counterexample (show equivalence) $
+                            equivalence ? (x, y) == (x === y)
+        , testProperty "Every element belongs to exactly one class" $
+            displayingRelation \xs f rel -> if Set.null xs then property True else
+                let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                    classes = classifyBy (curry (equivalence ?)) xs
+                in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
+                        counterexample (show classes) $ counterexample (show equivalence) $
+                            length (Set.unions classes) == (sum . fmap length . Set.toList) classes
+        ]
     ]
