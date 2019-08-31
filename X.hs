@@ -1,15 +1,15 @@
 {-# language RecordWildCards
            , TypeFamilies
+           , BlockArguments
   #-}
 
 {-# options_ghc  -fdefer-typed-holes #-}
 
-module X where
+module Main where
 
 import Data.List.Ordered (union)
 import Data.List (groupBy)
 import Data.Function (on)
-import Test.QuickCheck
 import GHC.Exts
 import Data.Foldable (null)
 import Data.Set (Set)
@@ -20,6 +20,8 @@ import Data.Matrix (Matrix, matrix)
 import qualified Data.Matrix as Matrix
 import qualified Data.List as List
 import Data.Tuple (swap)
+import Test.Tasty.QuickCheck
+import Test.Tasty
 
 inverseLookup :: Eq v => Map k v -> v -> [k]
 inverseLookup m v = fmap snd . filter ((== v) . fst) . fmap swap . Map.assocs $ m
@@ -38,6 +40,9 @@ normalize u = _z
 -- -- rather consider it with regard to the set at hand.
 
 data Relation a = Relation { table :: Matrix Bool, indices :: Map Int a }  -- Invariant: square.
+
+instance Show a => Show (Relation a) where
+    show = show . table
 
 relation :: Ord a => Set a -> (a -> a -> Bool) -> Relation a
 relation u f = Relation{..} where
@@ -81,9 +86,18 @@ instance Num Bool where
     signum = id
     fromInteger = odd
 
-closure :: Relation a -> Relation a
-closure Relation{..} = let f = last . converge . scanl1 Matrix.multStd . repeat
-                       in Relation { table = f table, .. }
+reflexiveClosure :: Relation a -> Relation a
+reflexiveClosure Relation{..} = Relation{ table = Matrix.elementwise (||) table d, ..}
+    where d = Matrix.diagonalList (Map.size indices) False (repeat True)
+
+symmetricClosure :: Relation a -> Relation a
+symmetricClosure Relation{..} = Relation{ table = Matrix.elementwise (||) table t, ..}
+    where t = Matrix.transpose table
+
+transitiveClosure :: Relation a -> Relation a
+transitiveClosure Relation{..} = Relation { table = f table, .. }
+    where f = last . converge . scanl1 g . repeat
+          g x y = Matrix.elementwise (||) x (Matrix.multStd x y)
 
 converge = convergeBy (==)
 
@@ -142,3 +156,27 @@ coveringChains x ys = base ++ recursive
 -- Definition of a covering chain:
 -- 1. Sufficient: Subsumes the given interval.
 -- 2. Minimal: If any element is removed, does not subsume anymore.
+
+displayingRelation :: Testable prop => (Set Int -> (Int -> Int -> Bool) -> Relation Int -> prop) -> Property
+displayingRelation p = forAllShrink arbitrary shrink \(Blind f) -> forAllShrink arbitrary shrink \xs ->
+    let rel = relation xs f in counterexample (show xs) . counterexample (show rel) $ (p xs f rel)
+
+main = defaultMain $ testGroup ""
+    [ testProperty "The relation type is isomorphic to the original relation" $
+        displayingRelation \xs f rel -> if null xs then property True else
+            forAllShrink ((oneof . fmap return . Set.toList) xs) shrink \x ->
+            forAllShrink ((oneof . fmap return . Set.toList) xs) shrink \y ->
+            rel ? (x, y) ==  x `f` y
+    , testProperty "A relation is not necessarily reflexive" $ expectFailure $
+        displayingRelation \_ _ rel -> isReflexive rel
+    , testProperty "Reflexive closure of a relation is reflexive" $
+        displayingRelation \_ _ rel -> (isReflexive . reflexiveClosure) rel
+    , testProperty "A relation is not necessarily symmetric" $ expectFailure $
+        displayingRelation \_ _ rel -> isSymmetric rel
+    , testProperty "Symmetric closure of a relation is symmetric" $
+        displayingRelation \_ _ rel -> (isSymmetric . symmetricClosure) rel
+    , testProperty "A relation is not necessarily transitive" $ expectFailure $
+        displayingRelation \_ _ rel -> isTransitive rel
+    , testProperty "Transitive closure of a relation is transitive" $
+        displayingRelation \_ _ rel -> (isTransitive . transitiveClosure) rel
+    ]
