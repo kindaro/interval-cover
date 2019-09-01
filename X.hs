@@ -52,7 +52,7 @@ normalize u | Set.null u = Set.empty
     bounds :: Set Int -> I
     bounds xs = interval (Set.findMin xs) (Set.findMax xs)
 
-data Relation a = Relation { table :: Matrix Bool, indices :: Map Int a }  -- Invariant: square.
+data Relation a = Relation { table :: Matrix Binary, indices :: Map Int a }  -- Invariant: square.
 
 instance Show a => Show (Relation a) where
     show = show . table
@@ -60,12 +60,12 @@ instance Show a => Show (Relation a) where
 relation :: Ord a => Set a -> (a -> a -> Bool) -> Relation a
 relation u f = Relation{..} where
         n = Set.size u
-        table = matrix n n (\(i, j) -> (indices ! i) `f` (indices ! j))
+        table = matrix n n (\(i, j) -> fromBool $ (indices ! i) `f` (indices ! j))
         indices = Map.fromDistinctAscList $ zip [1..] (Set.toAscList u)
 
 (?) :: Eq a => Relation a -> (a, a) -> Bool
 Relation{..} ? (x, y) = let { [i] = inverseLookup indices x ; [j] = inverseLookup indices y }
-                        in Matrix.getElem i j table
+                        in toBool $ Matrix.getElem i j table
 
 -- Check: ? on a relation is the same as the original operation.
 
@@ -91,26 +91,40 @@ isTransitive r = if empty r then property True else
     forAll (randomIndex r) \z ->
     r ? (x, y) && r ? (y, z) ==> r ? (x, z)
 
-instance Num Bool where
-    (+) = (||)
-    (*) = (&&)
+data Binary = Yes | No deriving (Eq, Ord)
+
+fromBool True = Yes
+fromBool False = No
+
+toBool Yes = True
+toBool No = False
+
+instance Show Binary where
+    show Yes = "#"
+    show No  = "."
+
+instance Num Binary where
+    No  + No  = No
+    _   + _   = Yes
+    Yes * Yes = Yes
+    _   * _   = No
     negate = id
     abs = id
     signum = id
-    fromInteger = odd
+    fromInteger = fromBool . odd
 
 reflexiveClosure :: Relation a -> Relation a
-reflexiveClosure Relation{..} = Relation{ table = Matrix.elementwise (||) table d, ..}
-    where d = Matrix.diagonalList (Map.size indices) False (repeat True)
+reflexiveClosure Relation{..} = Relation{ table = Matrix.elementwise (+) table d, ..}
+    where d = Matrix.diagonalList (Map.size indices) No (repeat Yes)
 
 symmetricClosure :: Relation a -> Relation a
-symmetricClosure Relation{..} = Relation{ table = Matrix.elementwise (||) table t, ..}
+symmetricClosure Relation{..} = Relation{ table = Matrix.elementwise (+) table t, ..}
     where t = Matrix.transpose table
 
 transitiveClosure :: Relation a -> Relation a
 transitiveClosure Relation{..} = Relation { table = f table, .. }
     where f = last . converge . scanl1 g . repeat
-          g x y = Matrix.elementwise (||) x (Matrix.multStd x y)
+          g x y = Matrix.elementwise (+) x (Matrix.multStd x y)
 
 converge = convergeBy (==)
 
