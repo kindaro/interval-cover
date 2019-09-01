@@ -1,6 +1,7 @@
 {-# language RecordWildCards
            , TypeFamilies
            , BlockArguments
+           , TypeApplications
   #-}
 
 {-# options_ghc  -fdefer-typed-holes #-}
@@ -139,7 +140,10 @@ data I = I { left, right :: Int }  -- Invariant: ordered.
     deriving (Eq, Ord, Show)
 
 instance Arbitrary I where
-    arbitrary = arbitrary >>= return . uncurry interval
+    arbitrary = do
+        (Positive size) <- arbitrary @(Positive Float)
+        spread <- scale (* 5) (arbitrary @Int)
+        return $ interval (spread - floor (size / 2)) (spread + ceiling (size / 2))
 
 interval x y | x > y     = I y x
              | otherwise = I x y
