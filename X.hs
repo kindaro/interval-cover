@@ -47,11 +47,12 @@ normalize u | Set.null u = Set.empty
             | otherwise = let  rel = transitiveClosure (relation u joins)
                                classes = classifyBy (curry (rel ?)) u
                           in Set.map (bounds . flatten) classes
-  where
-    flatten :: Set I -> Set Int
-    flatten = let deconstruct (I x y) = Set.fromList [x, y] in Set.unions . Set.map deconstruct
-    bounds :: Set Int -> I
-    bounds xs = interval (Set.findMin xs) (Set.findMax xs)
+
+flatten :: Set I -> Set Int
+flatten = let deconstruct (I x y) = Set.fromList [x, y] in Set.unions . Set.map deconstruct
+
+bounds :: Set Int -> I
+bounds xs = interval (Set.findMin xs) (Set.findMax xs)
 
 data Relation a = Relation { table :: Matrix Binary, indices :: Map Int a }  -- Invariant: square.
 
@@ -255,3 +256,11 @@ main = defaultMain $ testGroup "Properties."
                             length (Set.unions classes) == (sum . fmap length . Set.toList) classes
         ]
     ]
+
+displayIntervals :: Set I -> String
+displayIntervals xs =
+  let (I leftBound rightBound) = (bounds . flatten) xs
+      displayOne (I x y) = replicate (x - leftBound) '.'
+                        ++ replicate (y - x + 1) '#'
+                        ++ replicate (rightBound - y) '.' ++ pure '\n'
+  in concatMap displayOne xs
