@@ -42,14 +42,15 @@ e1 = Set.fromList [ interval x (x + 2) | x <- [1..10] ]
 e2 = Set.fromList [ interval 1 3, interval 2 4, interval 5 7 ]
 
 normalize :: Set I -> Set I
-normalize u = _z
--- -- 1. Transitive closure will help me. I must form the transitive closure of the `joins` relation
--- -- which is already symmetric and reflexive. This will turn said relation into equivalence.
--- -- 2. I can then divide the intervals into equivalence classes and simply take the left of the
--- -- smallest and the right of the largest.
--- --
--- -- But I cannot consider transitive closure of a relation by itself --- it is not finite. I should
--- -- rather consider it with regard to the set at hand.
+normalize u | Set.null u = Set.empty
+            | otherwise = let  rel = transitiveClosure (relation u joins)
+                               classes = classifyBy (curry (rel ?)) u
+                          in Set.map (bounds . flatten) classes
+  where
+    flatten :: Set I -> Set Int
+    flatten = let deconstruct (I x y) = Set.fromList [x, y] in Set.unions . Set.map deconstruct
+    bounds :: Set Int -> I
+    bounds xs = interval (Set.findMin xs) (Set.findMax xs)
 
 data Relation a = Relation { table :: Matrix Bool, indices :: Map Int a }  -- Invariant: square.
 
