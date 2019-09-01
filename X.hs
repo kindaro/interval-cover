@@ -44,7 +44,7 @@ e2 = Set.fromList [ interval 1 3, interval 2 4, interval 5 7 ]
 
 normalize :: Set I -> Set I
 normalize u | Set.null u = Set.empty
-            | otherwise = let  rel = transitiveClosure (relation u joins)
+            | otherwise = let  rel = closure (relation u joins)
                                classes = classifyBy (curry (rel ?)) u
                           in Set.map (bounds . flatten) classes
 
@@ -55,6 +55,7 @@ bounds :: Set Int -> I
 bounds xs = interval (Set.findMin xs) (Set.findMax xs)
 
 data Relation a = Relation { table :: Matrix Binary, indices :: Map Int a }  -- Invariant: square.
+    deriving Eq
 
 instance Show a => Show (Relation a) where
     show = show . table
@@ -128,6 +129,10 @@ transitiveClosure Relation{..} = Relation { table = f table, .. }
     where f = last . converge . scanl1 g . repeat
           g x y = Matrix.elementwise (+) x (Matrix.multStd x y)
 
+closure :: Relation a -> Relation a
+closure = transitiveClosure . symmetricClosure . reflexiveClosure
+
+converge :: Eq a => [a] -> [a]
 converge = convergeBy (==)
 
 convergeBy :: (a -> a -> Bool) -> [a] -> [a]
@@ -149,13 +154,27 @@ instance Arbitrary I where
 interval x y | x > y     = I y x
              | otherwise = I x y
 
-within :: Int -> I -> Bool
-x `within` I{..} = left <= x && x <= right
+isWithin :: Int -> I -> Bool
+x `isWithin` I{..} = left <= x && x <= right
+
+isWithinOneOf :: Int -> Set I -> Bool
+x `isWithinOneOf` s  = or . Set.map (x `isWithin`) $ s
+
+countWithin :: Set I -> Int -> Int
+countWithin s x = sum . fmap (fromEnum . (x `isWithin`)) . Set.toList $ s
+
+displayIntervals :: Set I -> String
+displayIntervals xs =
+  let (I leftBound rightBound) = (bounds . flatten) xs
+      displayOne (I x y) = replicate (x - leftBound) '.'
+                        ++ replicate (y - x + 1) '#'
+                        ++ replicate (rightBound - y) '.' ++ pure '\n'
+  in concatMap displayOne xs
 
 precedes, meets, overlaps, isFinishedBy, contains, starts :: I -> I -> Bool
 i `precedes` j      =  right i < left j
 i `meets` j         =  right i == left j
-i `overlaps` j      =  left i < left j && right i < right j
+i `overlaps` j      =  left i < left j && right i < right j && right i > left j
 i `isFinishedBy` j  =  left i < left j && right i == right j
 i `contains` j      =  left i < left j && right i > right j
 i `starts` j        =  left i == left j && right i < right j
@@ -255,12 +274,32 @@ main = defaultMain $ testGroup "Properties."
                         counterexample (show classes) $ counterexample (show equivalence) $
                             length (Set.unions classes) == (sum . fmap length . Set.toList) classes
         ]
+    ,  testGroup "Normalizer."
+        [ testProperty "Normal set of intervals is pairwise disjoint" \s ->
+            let t = normalize s
+            in QuickCheck.classify (s /= t) "Non-trivial normalization"
+                . counterexample (displayIntervals s) . counterexample (displayIntervals t)
+                $ if Set.size t < 2 then return True else do
+                    x <- choose (0, Set.size t - 1)
+                    let i = Set.elemAt x t
+                        t' = Set.deleteAt x t
+                    y <- choose (0, Set.size t' - 1)
+                    let j = Set.elemAt y t'
+                    return $ i `isDisjointWith` j
+        , testProperty "Normalization is idempotent" \s ->
+            QuickCheck.classify (normalize s /= s) "Non-trivial normalization"
+            let t = normalize s
+                t' = normalize t
+            in  counterexample (displayIntervals s) . counterexample (displayIntervals t)
+                . counterexample (displayIntervals t')
+                $ t == t'
+        , testProperty "Preserves pointwise coverage" $ \s x ->
+            let t = normalize s
+            in  QuickCheck.classify (countWithin s x == 1) "Point is within exactly once"
+                . QuickCheck.classify (t /= s) "Non-trivial normalization"
+                . QuickCheck.classify (countWithin s x > 1) "Point is within more than once"
+                .  QuickCheck.classify (not $ x `isWithinOneOf` s) "Point is without"
+                . counterexample (displayIntervals s) . counterexample (displayIntervals t)
+                $ (countWithin s x >= 1) == (countWithin t x == 1)
+        ]
     ]
-
-displayIntervals :: Set I -> String
-displayIntervals xs =
-  let (I leftBound rightBound) = (bounds . flatten) xs
-      displayOne (I x y) = replicate (x - leftBound) '.'
-                        ++ replicate (y - x + 1) '#'
-                        ++ replicate (rightBound - y) '.' ++ pure '\n'
-  in concatMap displayOne xs
