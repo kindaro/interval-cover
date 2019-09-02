@@ -15,8 +15,7 @@ import Control.Monad
 import Data.List.Ordered (union)
 import Data.List (groupBy)
 import Data.Function (on)
-import GHC.Exts
-import Data.Foldable (null)
+import Data.Foldable (null, toList)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Map (Map, (!))
@@ -30,6 +29,7 @@ import qualified Test.Tasty.QuickCheck as QuickCheck
 import Test.Tasty
 import Data.Function
 import Data.Proxy
+
 
 inverseLookup :: Eq v => Map k v -> v -> [k]
 inverseLookup m v = fmap snd . filter ((== v) . fst) . fmap swap . Map.assocs $ m
@@ -64,6 +64,20 @@ data Relation a = Relation { table :: Matrix Binary, indices :: Map Int a }  -- 
 
 instance Show a => Show (Relation a) where
     show = show . table
+
+blank :: Ord a => Set a -> Relation a
+blank set = relation set ((const.const) False)
+
+complete :: Ord a => Set a -> Relation a
+complete set = relation set ((const.const) True)
+
+equality :: Ord a => Set a -> Relation a
+equality set = (blank set) { table = Matrix.diagonalList (Set.size set) No (repeat Yes) }
+
+elementwise :: Eq a => (Binary -> Binary -> Binary) -> Relation a -> Relation a -> Relation a
+elementwise f u v
+    | indices u /= indices v = error "Elementwise only works on relations over the same set."
+    | otherwise = Relation { table = Matrix.elementwise f (table u) (table v), indices = indices u }
 
 relation :: Ord a => Set a -> (a -> a -> Bool) -> Relation a
 relation u f = Relation{..} where
@@ -267,6 +281,20 @@ main = defaultMain $ testGroup "Properties."
             List.elem [ ] . take 1000 . fmap ($ (i :: I)) . iterate (>=> List.nub . shrink) $ return
         ]
 
+    , testGroup "Relations on intervals."
+        let core = [ precedes, meets, overlaps, isFinishedBy, contains, starts ]
+            basic = core ++ fmap flip core ++ [(==)]
+        in
+            [ testProperty "Exhaustive" \intervals ->
+                let rels = fmap (relation intervals) basic
+                in List.foldl1' (elementwise (^)) rels == complete intervals
+            , testProperty "Pairwise distinct" \intervals ->
+                let rels = fmap (relation intervals) basic
+                in QuickCheck.withMaxSuccess 1000 do
+                    (s, t) <- anyTwo rels
+                    return $ elementwise (*) s t == blank intervals
+            ]
+
     , testGroup "Classification."
         [ testProperty "Union inverts classification" $
             displayingRelation \xs f rel ->
@@ -308,11 +336,7 @@ main = defaultMain $ testGroup "Properties."
             in QuickCheck.classify (s /= t) "Non-trivial normalization"
                 . counterexample (displayIntervals s) . counterexample (displayIntervals t)
                 $ if Set.size t < 2 then return True else do
-                    x <- choose (0, Set.size t - 1)
-                    let i = Set.elemAt x t
-                        t' = Set.deleteAt x t
-                    y <- choose (0, Set.size t' - 1)
-                    let j = Set.elemAt y t'
+                    (i, j) <- anyTwo t
                     return $ i `isDisjointWith` j
         , testProperty "Normalization is idempotent" \s ->
             QuickCheck.classify (normalize s /= s) "Non-trivial normalization"
@@ -352,3 +376,19 @@ checkCommutativeRingAxioms Proxy typeName = testGroup ("Ring axioms for " ++ typ
     , testProperty "Right distribution" \x y z ->
         let _ = (x :: a) in (y + z) * x == (y * x) + (z * x)
     ]
+
+deleteAt idx xs = lft ++ rgt
+  where (lft, (_:rgt)) = splitAt idx xs
+
+anyTwo :: (Show (f a), Foldable f) => f a -> Gen (a, a)
+anyTwo set
+    | length set > 1 = do
+        let list = toList set
+        x <- choose (0, length list - 1)
+        let s = list !! x
+            list' = deleteAt x list
+        y <- choose (0, length list' - 1)
+        let t = list' !! y
+        return (s, t)
+    | otherwise = error $ "anyTwo cannot find two distinct elements: \
+                            \set " ++ show set ++ " is too small."
