@@ -2,12 +2,16 @@
            , TypeFamilies
            , BlockArguments
            , TypeApplications
+           , ScopedTypeVariables
   #-}
 
 {-# options_ghc  -fdefer-typed-holes #-}
 
 module Main where
 
+import Prelude hiding ((^))
+import qualified Prelude
+import Control.Monad
 import Data.List.Ordered (union)
 import Data.List (groupBy)
 import Data.Function (on)
@@ -25,6 +29,7 @@ import Test.Tasty.QuickCheck hiding (classify)
 import qualified Test.Tasty.QuickCheck as QuickCheck
 import Test.Tasty
 import Data.Function
+import Data.Proxy
 
 inverseLookup :: Eq v => Map k v -> v -> [k]
 inverseLookup m v = fmap snd . filter ((== v) . fst) . fmap swap . Map.assocs $ m
@@ -92,7 +97,7 @@ isTransitive r = if empty r then property True else
     forAll (randomIndex r) \z ->
     r ? (x, y) && r ? (y, z) ==> r ? (x, z)
 
-data Binary = Yes | No deriving (Eq, Ord)
+data Binary = No | Yes deriving (Eq, Ord, Bounded, Enum)
 
 fromBool True = Yes
 fromBool False = No
@@ -105,8 +110,9 @@ instance Show Binary where
     show No  = "."
 
 instance Num Binary where
-    No  + No  = No
-    _   + _   = Yes
+    No  + Yes = Yes
+    Yes + No  = Yes
+    _   + _   = No
     Yes * Yes = Yes
     _   * _   = No
     negate = id
@@ -114,18 +120,29 @@ instance Num Binary where
     signum = id
     fromInteger = fromBool . odd
 
+(^) :: Binary -> Binary -> Binary
+x ^ y = x + y + (x * y)
+
+instance Arbitrary Binary where
+    arbitrary = arbitraryBoundedEnum
+
 reflexiveClosure :: Relation a -> Relation a
-reflexiveClosure Relation{..} = Relation{ table = Matrix.elementwise (+) table d, ..}
+reflexiveClosure Relation{..} = Relation{ table = Matrix.elementwise (^) table d, ..}
     where d = Matrix.diagonalList (Map.size indices) No (repeat Yes)
 
 symmetricClosure :: Relation a -> Relation a
-symmetricClosure Relation{..} = Relation{ table = Matrix.elementwise (+) table t, ..}
+symmetricClosure Relation{..} = Relation{ table = Matrix.elementwise (^) table t, ..}
     where t = Matrix.transpose table
 
 transitiveClosure :: Relation a -> Relation a
 transitiveClosure Relation{..} = Relation { table = f table, .. }
     where f = last . converge . scanl1 g . repeat
-          g x y = Matrix.elementwise (+) x (Matrix.multStd x y)
+          g' x y = Matrix.elementwise (+) x (x `Matrix.multStd` y)
+          g = throughInteger g'
+          throughInteger :: (Matrix Integer -> Matrix Integer -> Matrix Integer)
+                         -> Matrix Binary -> Matrix Binary -> Matrix Binary
+          throughInteger f x y = fmap (toEnum . fromInteger . signum) $ f (fmap convert x) (fmap convert y)
+          convert = (fromIntegral :: Int -> Integer) . fromEnum
 
 closure :: Relation a -> Relation a
 closure = transitiveClosure . symmetricClosure . reflexiveClosure
@@ -148,6 +165,12 @@ instance Arbitrary I where
         (Positive size) <- arbitrary @(Positive Float)
         spread <- scale (* 5) (arbitrary @Int)
         return $ interval (spread - floor (size / 2)) (spread + ceiling (size / 2))
+    shrink (I 0 0) = [ ]
+    shrink i = [resizeTo0 i]
+        where nudge x = x - signum x
+              resizeTo0 (I x y) | abs x >  abs y = interval (nudge x) y
+                                | abs x == abs y = interval (nudge x) (nudge y)
+                                | abs x <  abs y = interval x (nudge y)
 
 interval x y | x > y     = I y x
              | otherwise = I x y
@@ -239,6 +262,11 @@ main = defaultMain $ testGroup "Properties."
             displayingRelation \_ _ rel -> (isTransitive . transitiveClosure) rel
         ]
 
+    , testGroup "Intervals."
+        [ testProperty "Shrinking intervals converges" \i ->
+            List.elem [ ] . take 1000 . fmap ($ (i :: I)) . iterate (>=> List.nub . shrink) $ return
+        ]
+
     , testGroup "Classification."
         [ testProperty "Union inverts classification" $
             displayingRelation \xs f rel ->
@@ -302,4 +330,25 @@ main = defaultMain $ testGroup "Properties."
                 . counterexample (displayIntervals s) . counterexample (displayIntervals t)
                 $ (countWithin s x >= 1) == (countWithin t x == 1)
         ]
+    , checkCommutativeRingAxioms (Proxy @Binary) "Binary"
+    ]
+
+checkCommutativeRingAxioms :: forall a. (Eq a, Num a, Show a, Arbitrary a) => Proxy a -> String -> TestTree
+checkCommutativeRingAxioms Proxy typeName = testGroup ("Ring axioms for " ++ typeName ++ ".")
+    [ testProperty "Addition is associative" \x y z ->
+        let _ = (x :: a) in (x + y) + z == x + (y + z)
+    , testProperty "Addition is commutative" \x y ->
+        let _ = (x :: a) in x + y == y + x
+    , testProperty "Multiplication is associative" \x y z ->
+        let _ = (x :: a) in (x * y) * z == x * (y * z)
+    , testProperty "Multiplication is commutative" \x y ->
+        let _ = (x :: a) in x * y == y * x
+    , testProperty "Negation is compatible with zero" \x ->
+        let _ = (x :: a) in (x + negate x) + x == x
+    , testProperty "There is only one zero" \x y ->
+        let _ = (x :: a) in x + negate x == y + negate y
+    , testProperty "Left distribution" \x y z ->
+        let _ = (x :: a) in x * (y + z) == (x * y) + (x * z)
+    , testProperty "Right distribution" \x y z ->
+        let _ = (x :: a) in (y + z) * x == (y * x) + (z * x)
     ]
