@@ -70,8 +70,6 @@ relation u f = Relation{..} where
 Relation{..} ? (x, y) = let { [i] = inverseLookup indices x ; [j] = inverseLookup indices y }
                         in toBool $ Matrix.getElem i j table
 
--- Check: ? on a relation is the same as the original operation.
-
 empty = null . indices
 
 randomIndex :: Relation a -> Gen a
@@ -240,23 +238,24 @@ main = defaultMain $ testGroup "Properties."
         , testProperty "Transitive closure of a relation is transitive" $
             displayingRelation \_ _ rel -> (isTransitive . transitiveClosure) rel
         ]
+
     , testGroup "Classification."
         [ testProperty "Union inverts classification" $
             displayingRelation \xs f rel ->
-                let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                let equivalence = closure rel
                     classes = classifyBy (curry (equivalence ?)) xs
                 in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $
                         Set.unions classes == xs
         , testProperty "Intersection of a classification is empty" $
             displayingRelation \xs f rel -> if Set.null xs then property True else
-                let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                let equivalence = closure rel
                     classes = classifyBy (curry (equivalence ?)) xs
                 in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
                         if Set.size classes == 1 then classes == Set.singleton xs else
                             foldr1 Set.intersection classes == Set.empty
         , testProperty "Belonging to the same class = equivalent by the defining relation" $
             displayingRelation \xs f rel -> if Set.null xs then property True else
-                let equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
+                let equivalence = closure rel
                     classes = classifyBy (curry (equivalence ?)) xs
                     (===) :: Int -> Int -> Bool
                     (===) = (==) `on` \x -> Set.filter (x `Set.member`) classes
@@ -274,6 +273,7 @@ main = defaultMain $ testGroup "Properties."
                         counterexample (show classes) $ counterexample (show equivalence) $
                             length (Set.unions classes) == (sum . fmap length . Set.toList) classes
         ]
+
     ,  testGroup "Normalizer."
         [ testProperty "Normal set of intervals is pairwise disjoint" \s ->
             let t = normalize s
