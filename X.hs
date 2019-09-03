@@ -59,7 +59,9 @@ normalizeList :: [I] -> [I]
 normalizeList = Set.toList . normalize . Set.fromList
 
 flatten :: Set I -> Set Int
-flatten = let deconstruct (I x y) = Set.fromList [x, y] in Set.unions . Set.map deconstruct
+flatten = let deconstruct (I x y) = Set.fromList [x, y]
+              deconstruct (P x) = Set.singleton x
+          in Set.unions . Set.map deconstruct
 
 bounds :: Set Int -> I
 bounds xs = interval (Set.findMin xs) (Set.findMax xs)
@@ -176,7 +178,8 @@ convergeBy eq (x: xs@(y: _))
     | x `eq` y = [x]
     | otherwise = x : convergeBy eq xs
 
-data I = I { left, right :: Int }  -- Invariant: ordered.
+data I = I Int Int  -- Invariant: ordered.
+       | P Int
     deriving (Eq, Ord, Show, Generic)
 
 instance NFData I
@@ -186,18 +189,34 @@ instance Arbitrary I where
         (NonZero size) <- arbitrary @(NonZero Float)
         spread <- scale (* 5) (arbitrary @Int)
         return $ interval (spread - floor (size / 2)) (spread + floor (size / 2))
+    shrink (P 0) = [ ]
     shrink (I 0 0) = [ ]
-    shrink i = [resizeTo0 i]
-        where nudge x = x - signum x
-              resizeTo0 (I x y) | abs x >  abs y = interval (nudge x) y
-                                | abs x == abs y = interval (nudge x) (nudge y)
-                                | abs x <  abs y = interval x (nudge y)
+    shrink i = resizeTo0 i
+      where
+        nudge x = x - signum x
+        resizeTo0 (I x y)
+            | abs x >  abs y = [ interval (nudge x) y ]
+            | abs x <  abs y = [ interval x (nudge y) ]
+            | abs x == abs y = [ interval x (nudge y)
+                               , interval (nudge x) y
+                               , interval (nudge x) (nudge y) ]
+        resizeTo0 (P x)                    = [ point (nudge x) ]
 
-interval x y | x > y     = I y x
-             | otherwise = I x y
+interval x y | x == y   = P x
+             | x <  y   = I x y
+             | x >  y   = I y x
+
+point = P
+
+left, right :: I -> Int
+left  (I x _) = x
+left  (P x)   = x
+right (I _ y) = y
+right (P y)   = y
 
 isWithin :: Int -> I -> Bool
-x `isWithin` I{..} = left <= x && x <= right
+y `isWithin` (I x z) = x <= y && y <= z
+y `isWithin` (P x) = x == y
 
 isWithinOneOf :: Int -> Set I -> Bool
 x `isWithinOneOf` s  = or . Set.map (x `isWithin`) $ s
@@ -214,12 +233,12 @@ displayIntervals xs =
   in concatMap displayOne xs
 
 precedes, meets, overlaps, isFinishedBy, contains, starts :: I -> I -> Bool
-i `precedes` j      =  right i < left j
-i `meets` j         =  right i == left j
-i `overlaps` j      =  left i < left j && right i < right j && right i > left j
-i `isFinishedBy` j  =  left i < left j && right i == right j
-i `contains` j      =  left i < left j && right i > right j
-i `starts` j        =  left i == left j && right i < right j
+precedes =     \ i j  ->  right i < left j
+meets =        \ i j  ->  right i == left j && left i /= left j && right i /= right j
+overlaps =     \ i j  ->  left i < left j  && right i < right j  && right i > left j
+isFinishedBy = \ i j  ->  left i < left j  && right i == right j
+contains =     \ i j  ->  left i < left j  && right i > right j
+starts =       \ i j  ->  left i == left j && right i < right j
 
 i `absorbs` j        = i `isFinishedBy` j || i `contains` j || j `starts` i
 i `touches` j        = i `meets` j || i `overlaps` j
@@ -238,8 +257,8 @@ coveringChains x ys = base ++ recursive
         if y `absorbs` x then return (pure y) else fail ""
 
     recursive = do
-        z <- filter (`touches` x) ys
-        zs <- coveringChains (interval (right z) (right x)) (filter (`isRightwardsOf` z) ys)
+        z@(I left right) <- filter (`touches` x) ys
+        zs <- coveringChains (interval right right) (filter (`isRightwardsOf` z) ys)
         return $ z: zs
 
 -- λ traverse_ print $ coveringChains (interval 2 5) [interval 1 3, interval 2 4, interval 3 5, interval 4 6]
@@ -285,7 +304,9 @@ main = defaultMain $ testGroup "Properties."
 
     , testGroup "Intervals."
         [ testProperty "Shrinking intervals converges" \i ->
-            List.elem [ ] . take 1000 . fmap ($ (i :: I)) . iterate (>=> List.nub . shrink) $ return
+            within (10 Prelude.^ 4) . withMaxSuccess 1000
+            $ let nubShrink = fmap List.nub . (>=> shrink)
+              in List.elem [ ] . take 1000 . fmap ($ (i :: I)) . iterate nubShrink $ return
         ]
 
     , testGroup "Relations on intervals."
@@ -299,7 +320,8 @@ main = defaultMain $ testGroup "Properties."
                 let rels = fmap (relation intervals) basic
                 in QuickCheck.withMaxSuccess 1000 do
                     (s, t) <- anyTwo rels
-                    return $ elementwise (*) s t == blank intervals
+                    return
+                        $ counterexample (show s) . counterexample (show t) $ elementwise (*) s t == blank intervals
             ]
 
     , testGroup "Classification."
