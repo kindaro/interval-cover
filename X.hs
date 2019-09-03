@@ -4,14 +4,13 @@
            , TypeApplications
            , ScopedTypeVariables
            , DeriveGeneric
+           , FlexibleInstances
   #-}
 
 {-# options_ghc  -fdefer-typed-holes #-}
 
 module Main where
 
-import Prelude hiding ((^))
-import qualified Prelude
 import Control.Monad
 import Data.List.Ordered (union)
 import Data.List (groupBy)
@@ -141,18 +140,15 @@ instance Num Binary where
     signum = id
     fromInteger = fromBool . odd
 
-(^) :: Binary -> Binary -> Binary
-x ^ y = x + y + (x * y)
-
 instance Arbitrary Binary where
     arbitrary = arbitraryBoundedEnum
 
 reflexiveClosure :: Relation a -> Relation a
-reflexiveClosure Relation{..} = Relation{ table = Matrix.elementwise (^) table d, ..}
+reflexiveClosure Relation{..} = Relation{ table = Matrix.elementwise (+*) table d, ..}
     where d = Matrix.diagonalList (Map.size indices) No (repeat Yes)
 
 symmetricClosure :: Relation a -> Relation a
-symmetricClosure Relation{..} = Relation{ table = Matrix.elementwise (^) table t, ..}
+symmetricClosure Relation{..} = Relation{ table = Matrix.elementwise (+*) table t, ..}
     where t = Matrix.transpose table
 
 transitiveClosure :: Relation a -> Relation a
@@ -232,6 +228,27 @@ displayIntervals xs =
                         ++ replicate (rightBound - y) '.' ++ pure '\n'
   in concatMap displayOne xs
 
+instance Num (I -> I -> Bool) where
+    p + q = \i j -> i `p` j /= i `q` j
+    p * q = \i j -> i `p` j && i `q` j
+    negate = id
+    abs = id
+    signum = id
+    fromInteger = error "`fromInteger` is not defined for binary conditionals."
+
+instance CoArbitrary I
+
+instance Show (I -> I -> Bool) where
+    show p = let xs = Set.fromList [ interval i (i + 3) | i <- [1, 3.. 7] ]
+             in show (relation xs p)
+
+instance Eq (I -> I -> Bool) where
+    p == q = let xs = Set.fromList [ interval i (i + 3) | i <- [1, 3.. 7] ]
+             in relation xs p == relation xs q
+
+(+*) :: Num a => a -> a -> a
+x +* y = x + y + (x * y)
+
 precedes, meets, overlaps, isFinishedBy, contains, starts :: I -> I -> Bool
 precedes =     \ i j  ->  right i < left j
 meets =        \ i j  ->  right i == left j && left i /= left j && right i /= right j
@@ -240,11 +257,11 @@ isFinishedBy = \ i j  ->  left i < left j  && right i == right j
 contains =     \ i j  ->  left i < left j  && right i > right j
 starts =       \ i j  ->  left i == left j && right i < right j
 
-i `absorbs` j        = i `isFinishedBy` j || i `contains` j || j `starts` i
-i `touches` j        = i `meets` j || i `overlaps` j
-i `isDisjointWith` j = i `precedes` j || j `precedes` i
-i `joins` j          = not (i `isDisjointWith` j)
-i `isRightwardsOf` j = j `precedes` i || j `touches` i
+absorbs = isFinishedBy +* contains +* starts
+isDisjointWith = precedes +* flip precedes
+touches = meets +* overlaps
+joins = (fmap . fmap) not isDisjointWith
+isRightwardsOf = precedes +* touches
 
 subsume :: Set I -> I -> Bool
 xs `subsume` x = any (`absorbs` x) (normalize xs)
@@ -304,7 +321,7 @@ main = defaultMain $ testGroup "Properties."
 
     , testGroup "Intervals."
         [ testProperty "Shrinking intervals converges" \i ->
-            within (10 Prelude.^ 4) . withMaxSuccess 1000
+            within (10 ^ 4) . withMaxSuccess 1000
             $ let nubShrink = fmap List.nub . (>=> shrink)
               in List.elem [ ] . take 1000 . fmap ($ (i :: I)) . iterate nubShrink $ return
         ]
@@ -315,7 +332,7 @@ main = defaultMain $ testGroup "Properties."
         in
             [ testProperty "Exhaustive" \intervals ->
                 let rels = fmap (relation intervals) basic
-                in List.foldl1' (elementwise (^)) rels == complete intervals
+                in List.foldl1' (elementwise (+*)) rels == complete intervals
             , testProperty "Pairwise distinct" \intervals ->
                 let rels = fmap (relation intervals) basic
                 in QuickCheck.withMaxSuccess 1000 do
@@ -383,12 +400,14 @@ main = defaultMain $ testGroup "Properties."
                 . counterexample (displayIntervals s) . counterexample (displayIntervals t)
                 $ (countWithin s x >= 1) == (countWithin t x == 1)
         ]
+
     , checkCommutativeRingAxioms (Proxy @Binary) "Binary"
+    , checkCommutativeRingAxioms (Proxy @(I -> I -> Bool)) "I -> I -> Bool"
 
     , testGroup "Chains."
         [ testProperty "A chain terminates" \base intervals ->
             let chains = coveringChains base intervals
-            in within (10 Prelude.^ 3) . withMaxSuccess 1000
+            in within (10 ^ 3) . withMaxSuccess 1000
                 $ chains `deepseq` True
         , testProperty "A normalized chain is a singleton" \base intervals ->
             let normalChains = fmap normalizeList (coveringChains base intervals)
@@ -400,7 +419,7 @@ main = defaultMain $ testGroup "Properties."
         , testProperty "A chain is minimal" \base intervals ->
             let chains = {- fmap (Set.toList . normalize . Set.fromList) $ -} coveringChains base intervals
                 subchains = List.nub (chains >>= dropOne)
-            in within (10 Prelude.^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
+            in within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
                 $ fmap normalizeList subchains) == False
         ]
     ]
