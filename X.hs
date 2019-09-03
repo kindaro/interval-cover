@@ -3,6 +3,7 @@
            , BlockArguments
            , TypeApplications
            , ScopedTypeVariables
+           , DeriveGeneric
   #-}
 
 {-# options_ghc  -fdefer-typed-holes #-}
@@ -29,7 +30,8 @@ import qualified Test.Tasty.QuickCheck as QuickCheck
 import Test.Tasty
 import Data.Function
 import Data.Proxy
-
+import Control.DeepSeq
+import GHC.Generics (Generic)
 
 inverseLookup :: Eq v => Map k v -> v -> [k]
 inverseLookup m v = fmap snd . filter ((== v) . fst) . fmap swap . Map.assocs $ m
@@ -52,6 +54,9 @@ normalize u | Set.null u = Set.empty
             | otherwise = let  rel = closure (relation u joins)
                                classes = classifyBy (curry (rel ?)) u
                           in Set.map (bounds . flatten) classes
+
+normalizeList :: [I] -> [I]
+normalizeList = Set.toList . normalize . Set.fromList
 
 flatten :: Set I -> Set Int
 flatten = let deconstruct (I x y) = Set.fromList [x, y] in Set.unions . Set.map deconstruct
@@ -172,13 +177,15 @@ convergeBy eq (x: xs@(y: _))
     | otherwise = x : convergeBy eq xs
 
 data I = I { left, right :: Int }  -- Invariant: ordered.
-    deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show, Generic)
+
+instance NFData I
 
 instance Arbitrary I where
     arbitrary = do
-        (Positive size) <- arbitrary @(Positive Float)
+        (NonZero size) <- arbitrary @(NonZero Float)
         spread <- scale (* 5) (arbitrary @Int)
-        return $ interval (spread - floor (size / 2)) (spread + ceiling (size / 2))
+        return $ interval (spread - floor (size / 2)) (spread + floor (size / 2))
     shrink (I 0 0) = [ ]
     shrink i = [resizeTo0 i]
         where nudge x = x - signum x
@@ -355,7 +362,33 @@ main = defaultMain $ testGroup "Properties."
                 $ (countWithin s x >= 1) == (countWithin t x == 1)
         ]
     , checkCommutativeRingAxioms (Proxy @Binary) "Binary"
+
+    , testGroup "Chains."
+        [ testProperty "A chain terminates" \base intervals ->
+            let chains = coveringChains base intervals
+            in within (10 Prelude.^ 3) . withMaxSuccess 1000
+                $ chains `deepseq` True
+        , testProperty "A normalized chain is a singleton" \base intervals ->
+            let normalChains = fmap normalizeList (coveringChains base intervals)
+            in counterexample (show normalChains)
+                $ and . fmap ((1 ==) . length) $ normalChains
+        , testProperty "A chain is a cover" \base intervals ->
+            let chains = Set.fromList . fmap (normalize . Set.fromList) $ coveringChains base intervals
+            in and . Set.map (`subsume` base) $ chains
+        , testProperty "A chain is minimal" \base intervals ->
+            let chains = {- fmap (Set.toList . normalize . Set.fromList) $ -} coveringChains base intervals
+                subchains = List.nub (chains >>= dropOne)
+            in within (10 Prelude.^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
+                $ fmap normalizeList subchains) == False
+        ]
     ]
+
+dropOne :: [a] -> [[a]]
+dropOne [ ] = [ ]
+dropOne xs = do
+               index <- [0.. length xs - 1]
+               let ys = deleteAt index xs
+               return ys
 
 checkCommutativeRingAxioms :: forall a. (Eq a, Num a, Show a, Arbitrary a) => Proxy a -> String -> TestTree
 checkCommutativeRingAxioms Proxy typeName = testGroup ("Ring axioms for " ++ typeName ++ ".")
@@ -377,6 +410,7 @@ checkCommutativeRingAxioms Proxy typeName = testGroup ("Ring axioms for " ++ typ
         let _ = (x :: a) in (y + z) * x == (y * x) + (z * x)
     ]
 
+deleteAt :: Int -> [a] -> [a]
 deleteAt idx xs = lft ++ rgt
   where (lft, (_:rgt)) = splitAt idx xs
 
