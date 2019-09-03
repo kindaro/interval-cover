@@ -227,6 +227,9 @@ displayIntervals xs =
       displayOne (I x y) = replicate (x - leftBound) '.'
                         ++ replicate (y - x + 1) '#'
                         ++ replicate (rightBound - y) '.' ++ pure '\n'
+      displayOne (P x) = replicate (x - leftBound) '.'
+                      ++ "#"
+                      ++ replicate (rightBound - x) '.' ++ pure '\n'
   in concatMap displayOne xs
 
 instance Num (I -> I -> Bool) where
@@ -262,7 +265,7 @@ absorbs = isFinishedBy +* contains +* flip starts +* (==)
 isDisjointWith = precedes +* flip precedes
 touches = meets +* overlaps
 joins = (fmap . fmap) not isDisjointWith
-isRightwardsOf = precedes +* touches
+isRightwardsOf = flip (precedes +* touches)
 
 subsume :: Set I -> I -> Bool
 xs `subsume` x = any (`absorbs` x) (normalize xs)
@@ -275,8 +278,8 @@ coveringChains x ys = base ++ recursive
         if y `absorbs` x then return (pure y) else fail ""
 
     recursive = do
-        z@(I left right) <- filter (`touches` x) ys
-        zs <- coveringChains (interval right right) (filter (`isRightwardsOf` z) ys)
+        z <- filter (`touches` x) ys
+        zs <- coveringChains (interval (right z) (right x)) (filter (`isRightwardsOf` z) ys)
         return $ z: zs
 
 -- λ traverse_ print $ coveringChains (interval 2 5) [interval 1 3, interval 2 4, interval 3 5, interval 4 6]
@@ -474,7 +477,7 @@ main = defaultMain $ testGroup "Properties."
     , testGroup "Chains."
         [ testProperty "A chain terminates" \base intervals ->
             let chains = coveringChains base intervals
-            in within (10 ^ 3) . withMaxSuccess 1000
+            in within (10 ^ 4) . withMaxSuccess 1000
                 $ chains `deepseq` True
         , testProperty "A normalized chain is a singleton" \base intervals ->
             let normalChains = fmap normalizeList (coveringChains base intervals)
