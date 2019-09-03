@@ -257,7 +257,7 @@ isFinishedBy = \ i j  ->  left i < left j  && right i == right j
 contains =     \ i j  ->  left i < left j  && right i > right j
 starts =       \ i j  ->  left i == left j && right i < right j
 
-absorbs = isFinishedBy +* contains +* starts
+absorbs = isFinishedBy +* contains +* flip starts +* (==)
 isDisjointWith = precedes +* flip precedes
 touches = meets +* overlaps
 joins = (fmap . fmap) not isDisjointWith
