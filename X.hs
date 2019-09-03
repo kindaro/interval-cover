@@ -89,23 +89,23 @@ relation u f = Relation{..} where
 Relation{..} ? (x, y) = let { [i] = inverseLookup indices x ; [j] = inverseLookup indices y }
                         in toBool $ Matrix.getElem i j table
 
-empty = null . indices
+isEmpty = null . indices
 
 randomIndex :: Relation a -> Gen a
 randomIndex = oneof . fmap return . Map.elems . indices
 
 isReflexive, isSymmetric, isTransitive :: (Eq a, Show a) => Relation a -> Property
 
-isReflexive r = if empty r then property True else
+isReflexive r = if isEmpty r then property True else
     forAll (randomIndex r) \x ->
     r ? (x, x) == True
 
-isSymmetric r = if empty r then property True else
+isSymmetric r = if isEmpty r then property True else
     forAll (randomIndex r) \x ->
     forAll (randomIndex r) \y ->
     r ? (x, y) == r ? (y, x)
 
-isTransitive r = if empty r then property True else
+isTransitive r = if isEmpty r then property True else
     forAll (randomIndex r) \x ->
     forAll (randomIndex r) \y ->
     forAll (randomIndex r) \z ->
