@@ -25,6 +25,7 @@ import qualified Data.Matrix as Matrix
 import qualified Data.List as List
 import Data.Tuple (swap)
 import Test.Tasty.QuickCheck hiding (classify)
+import Test.Tasty.HUnit
 import qualified Test.Tasty.QuickCheck as QuickCheck
 import Test.Tasty
 import Data.Function
@@ -301,7 +302,73 @@ instance Arbitrary MostlyNot where
         return $ MostlyNot \x y -> if x * y `mod` 11 == 0 then f x y else False
 
 main = defaultMain $ testGroup "Properties."
-    [ testGroup "Relations."
+    [ testGroup "Cases."
+        [ testGroup "Relations."
+            [ testCaseSteps "`absorbs`" \step -> do
+                assertBool "" $ interval 1 4 `absorbs` point 1
+                assertBool "" $ interval 1 4 `absorbs` interval 1 3
+                assertBool "" $ interval 1 4 `absorbs` interval 1 4
+                assertBool "" $ interval 1 4 `absorbs` interval 2 3
+                assertBool "" $ interval 1 4 `absorbs` interval 2 4
+                assertBool "" $ interval 1 4 `absorbs` point 4
+            , testCaseSteps "not `absorbs`" \step -> do
+                assertBool "" . not $ interval 1 4 `absorbs` point 0
+                assertBool "" . not $ interval 1 4 `absorbs` interval 0 1
+                assertBool "" . not $ interval 1 4 `absorbs` interval 0 2
+                assertBool "" . not $ interval 1 4 `absorbs` interval 0 4
+                assertBool "" . not $ interval 1 4 `absorbs` interval 1 5
+                assertBool "" . not $ interval 1 4 `absorbs` interval 2 5
+                assertBool "" . not $ interval 1 4 `absorbs` interval 4 5
+                assertBool "" . not $ interval 1 4 `absorbs` point 5
+            , testCaseSteps "`isRightwardsOf`" \step -> do
+                assertBool "" $ interval 2 4 `isRightwardsOf` interval 1 3
+            , testCaseSteps "not `isRightwardsOf`" \step -> do
+                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 1 5
+                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 2 5
+                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 3 5
+                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 4 5
+        ]
+        , testGroup "Chains."
+            [ testCase "Simple covering chains"
+                $ coveringChains
+                    (interval 1 3) [interval 0 3, interval 0 4, interval 1 3, interval 1 4]
+                        @?= [[interval 0 3], [interval 0 4], [interval 1 3], [interval 1 4]]
+            , testCaseSteps "Non-covering interval set" \step -> do
+                coveringChains
+                    (interval 2 4)
+                        [ interval 0 2, point 1, interval 1 2, interval 1 3
+                        , point 2, interval 2 3
+                        ]
+                        @?= [ ]
+                coveringChains
+                    (interval 2 4)
+                        [ point 3, interval 3 4, interval 3 5
+                        , point 4, interval 4 5
+                        ]
+                        @?= [ ]
+                coveringChains
+                    (interval 2 5)
+                        [ interval 0 2, point 1, interval 1 2, interval 1 3
+                        , point 2, interval 2 3
+                        , point 3
+                        , point 4, interval 4 5, interval 4 6
+                        , point 5, interval 5 6
+                        ]
+                        @?= [ ]
+            , testCase "A set with extra intervals and point join"
+                $ coveringChains
+                    (interval 2 5)
+                    [interval 1 3, interval 2 4, interval 3 6]
+                        @?= [ [interval 1 3, interval 3 6] ]
+            , testCase "A set with extra intervals and extended join"
+                $ coveringChains
+                    (interval 2 7)
+                    [interval 1 4, interval 2 5, interval 3 7]
+                        @?= [ [interval 1 4, interval 3 7] ]
+            ]
+        ]
+
+    , testGroup "Relations."
         [ testProperty "The relation type is isomorphic to the original relation" $
             displayingRelation \xs f rel -> if null xs then property True else
                 oneOfSet xs \x -> oneOfSet xs \y -> rel ? (x, y) ==  x `f` y
