@@ -203,6 +203,8 @@ interval x y | x == y   = P x
              | x <  y   = I x y
              | x >  y   = I y x
 
+(~~) = interval
+
 point = P
 
 left, right :: I -> Int
@@ -278,9 +280,29 @@ coveringChains x ys = base ++ recursive
         if y `absorbs` x then return (pure y) else fail ""
 
     recursive = do
-        z <- filter (`touches` x) ys
+        z <- filter (`overlaps` x) ys
         zs <- coveringChains (interval (right z) (right x)) (filter (`isRightwardsOf` z) ys)
         return $ z: zs
+
+coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
+
+minimizeChain :: [I] -> [I]
+minimizeChain xs = last . converge $ ys
+    where ys = iterate (join . flip cutTransitivitiesList touches) xs
+
+transitivities :: Ord a => Set a -> (a -> a -> Bool) -> Set a
+transitivities set (?) =
+  let xs = Set.toList set
+  in Set.fromList [ y | x <- xs, y <- xs, z <- xs, x ? y, x ? z, y ? z ]
+
+cutTransitivitiesList :: Ord a => [a] -> (a -> a -> Bool) -> [[a]]
+cutTransitivitiesList set rel = Set.toList . Set.map Set.toList
+                              $ cutTransitivities (Set.fromList set) rel
+
+cutTransitivities :: Ord a => Set a -> (a -> a -> Bool) -> Set (Set a)
+cutTransitivities set rel =
+  let t = transitivities set rel
+  in if Set.null t then Set.singleton set else Set.map (`Set.delete` set) t
 
 -- λ traverse_ print $ coveringChains (interval 2 5) [interval 1 3, interval 2 4, interval 3 5, interval 4 6]
 -- [I {left = 1, right = 3},I {left = 2, right = 4},I {left = 3, right = 5}]
@@ -333,23 +355,23 @@ main = defaultMain $ testGroup "Properties."
         ]
         , testGroup "Chains."
             [ testCase "Simple covering chains"
-                $ coveringChains
+                $ coveringMinimalChains
                     (interval 1 3) [interval 0 3, interval 0 4, interval 1 3, interval 1 4]
                         @?= [[interval 0 3], [interval 0 4], [interval 1 3], [interval 1 4]]
             , testCaseSteps "Non-covering interval set" \step -> do
-                coveringChains
+                coveringMinimalChains
                     (interval 2 4)
                         [ interval 0 2, point 1, interval 1 2, interval 1 3
                         , point 2, interval 2 3
                         ]
                         @?= [ ]
-                coveringChains
+                coveringMinimalChains
                     (interval 2 4)
                         [ point 3, interval 3 4, interval 3 5
                         , point 4, interval 4 5
                         ]
                         @?= [ ]
-                coveringChains
+                coveringMinimalChains
                     (interval 2 5)
                         [ interval 0 2, point 1, interval 1 2, interval 1 3
                         , point 2, interval 2 3
@@ -359,12 +381,12 @@ main = defaultMain $ testGroup "Properties."
                         ]
                         @?= [ ]
             , testCase "A set with extra intervals and point join"
-                $ coveringChains
+                $ coveringMinimalChains
                     (interval 2 5)
                     [interval 1 3, interval 2 4, interval 3 6]
                         @?= [ [interval 1 3, interval 3 6] ]
             , testCase "A set with extra intervals and extended join"
-                $ coveringChains
+                $ coveringMinimalChains
                     (interval 2 7)
                     [interval 1 4, interval 2 5, interval 3 7]
                         @?= [ [interval 1 4, interval 3 7] ]
@@ -486,8 +508,13 @@ main = defaultMain $ testGroup "Properties."
         , testProperty "A chain is a cover" \base intervals ->
             let chains = Set.fromList . fmap (normalize . Set.fromList) $ coveringChains base intervals
             in and . Set.map (`subsume` base) $ chains
-        , testProperty "A chain is minimal" \base intervals ->
-            let chains = {- fmap (Set.toList . normalize . Set.fromList) $ -} coveringChains base intervals
+        , testProperty "A chain is not necessarily minimal" \base intervals ->
+            let chains = coveringChains base intervals
+                subchains = List.nub (chains >>= dropOne)
+            in expectFailure . within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
+                $ fmap normalizeList subchains) == False
+        , testProperty "A minimized chain is minimal" \base intervals ->
+            let chains = coveringMinimalChains base intervals
                 subchains = List.nub (chains >>= dropOne)
             in within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
                 $ fmap normalizeList subchains) == False
