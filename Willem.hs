@@ -7,7 +7,7 @@ paths1 (a, f) (b, c) _ | c >= f = [[]]
 paths1 _ _ [] = []
 paths1 r s@(b, c) ((d, e):xs) | d > c = []
                               | d <= b || e <= c = paths1 r s xs
-paths1 r s (x:xs) = map (x:) (paths1 r x xs) ++ paths1 r s xs
+paths1 r s@(_,sb) (x@(_, xb):xs) = map (x:) (paths1 r (sb,xb) xs) ++ paths1 r s xs
 
 paths0 :: Ord a => (a, a) -> [(a, a)] -> [[(a, a)]]
 paths0 (a, _) ((b, _):_) | b > a = []
