@@ -275,16 +275,22 @@ subsume :: Set I -> I -> Bool
 xs `subsume` x = any (`absorbs` x) (normalize xs)
 
 coveringChains :: I -> [I] -> [[I]]
-coveringChains x ys = base ++ recursive
+coveringChains x ys = coveringChains' x ys (interval ((\x -> x - 1) . left . bounds . flatten . Set.fromList $ ys) (left x))
+
+coveringChains' :: I -> [I] -> I -> [[I]]
+coveringChains' x ys limit = base ++ recursive 
   where
     base = do
-        y <- ys
+        y <- filter (limit `touches`) ys
         if y `absorbs` x then return (pure y) else fail ""
 
     recursive = do
-        z <- filter (`overlaps` x) ys
-        zs <- coveringChains (interval (right z) (right x)) (filter (`isRightwardsOf` z) ys)
-        return $ z: zs
+        y <- filter (\y -> y `overlaps` x && limit `touches` y) ys
+        zs <- coveringChains'
+                (interval (right y) (right x))
+                ((filter (`isRightwardsOf` y)) ys)
+                (interval (right limit) (right y))
+        return $ y: zs
 
 coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
 
@@ -510,13 +516,8 @@ main = defaultMain $ testGroup "Properties."
         , testProperty "A chain is a cover" \base intervals ->
             let chains = Set.fromList . fmap (normalize . Set.fromList) $ coveringChains base intervals
             in and . Set.map (`subsume` base) $ chains
-        , testProperty "A chain is not necessarily minimal" \base intervals ->
+        , testProperty "A chain is minimal" \base intervals ->
             let chains = coveringChains base intervals
-                subchains = List.nub (chains >>= dropOne)
-            in expectFailure . within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
-                $ fmap normalizeList subchains) == False
-        , testProperty "A minimized chain is minimal" \base intervals ->
-            let chains = coveringMinimalChains base intervals
                 subchains = List.nub (chains >>= dropOne)
             in within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
                 $ fmap normalizeList subchains) == False
