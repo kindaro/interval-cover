@@ -33,6 +33,8 @@ import Data.Proxy
 import Control.DeepSeq
 import GHC.Generics (Generic)
 
+import Willem
+
 inverseLookup :: Eq v => Map k v -> v -> [k]
 inverseLookup m v = fmap snd . filter ((== v) . fst) . fmap swap . Map.assocs $ m
 
@@ -518,8 +520,28 @@ main = defaultMain $ testGroup "Properties."
                 subchains = List.nub (chains >>= dropOne)
             in within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
                 $ fmap normalizeList subchains) == False
+        , testProperty "A Willem path is a cover" \base intervals ->
+            let chains = Set.fromList . fmap (normalize . Set.fromList) $ willemPaths base intervals
+            in and . Set.map (`subsume` base) $ chains
+        , testProperty "A Willem path is minimal" \base intervals ->
+            let chains = willemPaths base intervals
+                subchains = List.nub (chains >>= dropOne)
+            in within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
+                $ fmap normalizeList subchains) == False
         ]
     ]
+
+willemPaths x ys = (fmap.fmap) fromTuple $ paths' (toTuple x) (fmap toTuple ys)
+  where
+    toTuple (I x y) = (x, y)
+    toTuple (P x) = (x, x)
+    fromTuple = uncurry interval
+
+-- Example errors:
+-- λ paths' (0, 2) [(-2, 1), (-1, 2)]
+-- [[(-2,1),(-1,2)],[(-1,2)]]
+-- λ paths' (-2, 1) [(-2, 1), (-3, -1)]
+-- [[(-3,-1),(-2,1)],[(-2,1)]]
 
 dropOne :: [a] -> [[a]]
 dropOne [ ] = [ ]

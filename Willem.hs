@@ -14,5 +14,14 @@ paths0 (a, _) ((b, _):_) | b > a = []
 paths0 r@(a, _) ((_, c):xs) | c <= a = paths0 r xs
 paths0 r (x:xs) = map (x:) (paths1 r x xs) ++ paths0 r xs
 
+paths0' :: Ord a => (a, a) -> [(a, a)] -> [[(a, a)]]
+paths0' (a, _) ((b, _):_) | b > a = []
+paths0' r@(a, _) ((_, c):xs) | c <= a = paths0' r xs
+paths0' r (x:xs) = map (x:) (paths1 r x xs) ++ paths0' r xs
+paths0' _ [ ] = [ ]
+
 paths :: Ord a => (a, a) -> [(a, a)] -> [[(a, a)]]
 paths = (. sort) . paths0
+
+paths' :: Ord a => (a, a) -> [(a, a)] -> [[(a, a)]]
+paths' = (. sort) . paths0'
