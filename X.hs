@@ -180,11 +180,24 @@ data Interval a = Interval a a  -- Invariant: ordered.
 
 instance NFData a => NFData (Interval a)
 
-instance (Arbitrary a, Fractional a, Ord a) => Arbitrary (Interval a) where
+instance Arbitrary (Interval Int) where
     arbitrary = do
-        size <- arbitrary
-        spread <- scale (* 5) arbitrary
-        return $ interval (spread - size / 2) (spread + size / 2)
+        x <- arbitrary @(Interval Float)
+        return case x of
+            Point y -> Point (floor y)
+            Interval y z -> interval (floor y) (floor z)
+
+instance {-# overlappable #-} (Arbitrary a, Fractional a, Ord a) => Arbitrary (Interval a) where
+    arbitrary = do
+        d6 <- fmap (`mod` 6) (arbitrary @Int)
+        if d6 == 0
+            then do
+                spread <- scale (* 5) arbitrary
+                return $ point spread
+            else do
+                size <- arbitrary
+                spread <- scale (* 5) arbitrary
+                return $ interval (spread - size / 2) (spread + size / 2)
     shrink (Point 0) = [ ]
     shrink (Interval 0 0) = [ ]
     shrink i = resizeTo0 i
@@ -446,11 +459,16 @@ main = defaultMain $ testGroup "Properties."
         ]
 
     , testGroup "Intervals."
-        [ testProperty "Shrinking intervals converges" \i ->
+        [ testProperty "Shrinking intervals converges (Int)" \i ->
+            within (10 ^ (5 :: Int)) . withMaxSuccess 100
+            $ let _ = i :: Interval Int
+                  nubShrink = fmap List.nub . (>=> shrink)
+              in List.elem [ ] . take 1000 . fmap ($ i) . iterate nubShrink $ return
+        , testProperty "Shrinking intervals converges (Float)" \i ->
             within (10 ^ (5 :: Int)) . withMaxSuccess 100
             $ let _ = i :: Interval Float
                   nubShrink = fmap List.nub . (>=> shrink)
-              in List.elem [ ] . take 1000 . fmap ($ (i :: Interval Float)) . iterate nubShrink $ return
+              in List.elem [ ] . take 1000 . fmap ($ i) . iterate nubShrink $ return
         ]
 
     , testGroup "Relations on intervals."
