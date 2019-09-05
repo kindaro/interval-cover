@@ -9,7 +9,9 @@ unarmed human mind to grasp.
 1. We need to understand how intervals relate to each other.
 2. We need to be able to check if a given set of intervals is a solution to the problem.
 
-I will be saying _"base"_ meaning the interval to be covered, and _"chain"_ consisting of _"links"_ meaning a set of intervals that may be covering it. _(This naming will be justified somewhere below.)_
+I will be saying _"base"_ meaning the interval to be covered, and _"chain"_ consisting of
+_"links"_ meaning a set of intervals that may be covering it. _(I will eventually justify this
+naming.)_
 
 ### So, let us arm ourselves.
 
@@ -47,7 +49,7 @@ Whereas for numbers we can derive exactly 8 composite relations in terms of the 
 _(considering relations as a vector space over the binary field)_, on intervals we can define
 about 8 _thousand_. Some of those will be of use to us within this problem:
 
-    absorbs         =  isFinishedBy `or` contains      `or` flip starts `or` (==)
+    absorbs         =  isFinishedBy `or` contains `or` flip starts `or` (==)
     isDisjointWith  =  precedes     `or` flip precedes
     joins           =  (fmap . fmap) not isDisjointWith
     touches         =  meets        `or` overlaps
@@ -61,7 +63,7 @@ problem.
 1. A reflexive, symmetric and transitive closure of `joins` is an equivalence under which
    considered equivalent are those intervals that belong to a contiguous line.
 2. A _normal_ set of intervals is such in which all intervals are disjoint.
-    * Any set may be _normalized_ by gluing together intervals that `join` until none are left.
+    * Any set may be _normalized_ by gluing together intervals that join until none are left.
     * Normalization preserves coverage: if a point belongs to some of the intervals in a set, it
       will belong to an interval in its normalization.
 3. A solution is a chain such that:
@@ -80,11 +82,11 @@ endpoints.
 
     (?) :: Eq a => Relation a -> (a, a) -> Bool
 
-    bounds :: Set Int -> I
+    bounds :: Ord a => Set a -> Interval a
 
-    flatten :: Set I -> Set Int
+    flatten :: Ord a => Set (Interval a) -> Set a
 
-    normalize :: Set I -> Set I
+    normalize :: Ord a => Set (Interval a) -> Set (Interval a)
     normalize u | Set.null u = Set.empty
                 | otherwise = let  rel = closure (relation u joins)
                                    classes = classifyBy (curry (rel ?)) u
