@@ -329,6 +329,19 @@ coveringMinimalChains :: forall a. (Ord a, Num a)
                => Interval a -> [Interval a] -> [[Interval a]]
 coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
 
+isCovering :: Ord a => Interval a -> [Interval a] -> Bool
+isCovering base xs = case (Set.toList . normalize . Set.fromList) xs of
+                        [y] -> y `absorbs` base
+                        _   -> False
+
+isMinimalCovering :: Ord a => Interval a -> [Interval a] -> Bool
+isMinimalCovering base xs = isCovering base xs
+    && List.null (filter (isCovering base) (fmap (`deleteAt` xs) [0.. length xs - 1]))
+
+bruteForceCoveringChains :: forall a. (Ord a, Num a)
+                         => Interval a -> [Interval a] -> [[Interval a]]
+bruteForceCoveringChains base xs = filter (isMinimalCovering base) (List.subsequences xs)
+
 minimizeChain :: (Eq a, Ord a) => [Interval a] -> [Interval a]
 minimizeChain xs = last . converge $ ys
     where ys = iterate (join . flip cutTransitivitiesList touches) xs
@@ -575,6 +588,15 @@ main = defaultMain $ testGroup "Properties."
                 subchains = List.nub (chains >>= dropOne)
             in within (10 ^ (6 :: Int)) $ (or . fmap ((`subsume` base) . Set.fromList)
                 $ fmap normalizeList subchains) == False
+        , testProperty "Brute force search on null chain situations is fruitless"
+            \base intervals3 ->
+             let intervals2 = getInfiniteList intervals3 :: [[Interval Float]]
+                 f = List.null . coveringChains base
+                 g = \xs -> length xs < 10
+                 Just intervals = List.find f . filter g . take 100 $ intervals2
+             in counterexample (show intervals)
+                $ length intervals > 7 ==> List.null (bruteForceCoveringChains base intervals)
+
         , testProperty "A Willem path is a cover" \base intervals ->
             let _ = intervals :: [Interval Float]
                 chains = Set.fromList . fmap (normalize . Set.fromList) $ willemPaths base intervals
