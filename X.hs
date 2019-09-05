@@ -51,21 +51,21 @@ classifyBy eq = Set.fromList . Map.elems . List.foldl' f Map.empty . Set.toList
 e1 = Set.fromList [ interval x (x + 2) | x <- [1..10] ]
 e2 = Set.fromList [ interval 1 3, interval 2 4, interval 5 7 ]
 
-normalize :: Set I -> Set I
+normalize :: Set Interval -> Set Interval
 normalize u | Set.null u = Set.empty
             | otherwise = let  rel = closure (relation u joins)
                                classes = classifyBy (curry (rel ?)) u
                           in Set.map (bounds . flatten) classes
 
-normalizeList :: [I] -> [I]
+normalizeList :: [Interval] -> [Interval]
 normalizeList = Set.toList . normalize . Set.fromList
 
-flatten :: Set I -> Set Int
-flatten = let deconstruct (I x y) = Set.fromList [x, y]
-              deconstruct (P x) = Set.singleton x
+flatten :: Set Interval -> Set Int
+flatten = let deconstruct (Interval x y) = Set.fromList [x, y]
+              deconstruct (Point x) = Set.singleton x
           in Set.unions . Set.map deconstruct
 
-bounds :: Set Int -> I
+bounds :: Set Int -> Interval
 bounds xs = interval (Set.findMin xs) (Set.findMax xs)
 
 data Relation a = Relation { table :: Matrix Binary, indices :: Map Int a }  -- Invariant: square.
@@ -177,66 +177,66 @@ convergeBy eq (x: xs@(y: _))
     | x `eq` y = [x]
     | otherwise = x : convergeBy eq xs
 
-data I = I Int Int  -- Invariant: ordered.
-       | P Int
+data Interval = Interval Int Int  -- Invariant: ordered.
+              | Point Int
     deriving (Eq, Ord, Show, Generic)
 
-instance NFData I
+instance NFData Interval
 
-instance Arbitrary I where
+instance Arbitrary Interval where
     arbitrary = do
         (NonZero size) <- arbitrary @(NonZero Float)
         spread <- scale (* 5) (arbitrary @Int)
         return $ interval (spread - floor (size / 2)) (spread + floor (size / 2))
-    shrink (P 0) = [ ]
-    shrink (I 0 0) = [ ]
+    shrink (Point 0) = [ ]
+    shrink (Interval 0 0) = [ ]
     shrink i = resizeTo0 i
       where
         nudge x = x - signum x
-        resizeTo0 (I x y)
+        resizeTo0 (Interval x y)
             | abs x >  abs y = [ interval (nudge x) y ]
             | abs x <  abs y = [ interval x (nudge y) ]
             | abs x == abs y = [ interval x (nudge y)
                                , interval (nudge x) y
                                , interval (nudge x) (nudge y) ]
-        resizeTo0 (P x)                    = [ point (nudge x) ]
+        resizeTo0 (Point x)                    = [ point (nudge x) ]
 
-interval x y | x == y   = P x
-             | x <  y   = I x y
-             | x >  y   = I y x
+interval x y | x == y   = Point x
+             | x <  y   = Interval x y
+             | x >  y   = Interval y x
 
 (~~) = interval
 
-point = P
+point = Point
 
-left, right :: I -> Int
-left  (I x _) = x
-left  (P x)   = x
-right (I _ y) = y
-right (P y)   = y
+left, right :: Interval -> Int
+left  (Interval x _) = x
+left  (Point x)   = x
+right (Interval _ y) = y
+right (Point y)   = y
 
-isWithin :: Int -> I -> Bool
-y `isWithin` (I x z) = x <= y && y <= z
-y `isWithin` (P x) = x == y
+isWithin :: Int -> Interval -> Bool
+y `isWithin` (Interval x z) = x <= y && y <= z
+y `isWithin` (Point x) = x == y
 
-isWithinOneOf :: Int -> Set I -> Bool
+isWithinOneOf :: Int -> Set Interval -> Bool
 x `isWithinOneOf` s  = or . Set.map (x `isWithin`) $ s
 
-countWithin :: Set I -> Int -> Int
+countWithin :: Set Interval -> Int -> Int
 countWithin s x = sum . fmap (fromEnum . (x `isWithin`)) . Set.toList $ s
 
-displayIntervals :: Set I -> String
+displayIntervals :: Set Interval -> String
 displayIntervals xs =
-  let (I leftBound rightBound) = (bounds . flatten) xs
-      displayOne (I x y) = replicate (x - leftBound) '.'
+  let (Interval leftBound rightBound) = (bounds . flatten) xs
+      displayOne (Interval x y) = replicate (x - leftBound) '.'
                         ++ replicate (y - x + 1) '#'
                         ++ replicate (rightBound - y) '.' ++ pure '\n'
-      displayOne (P x) = replicate (x - leftBound) '.'
+      displayOne (Point x) = replicate (x - leftBound) '.'
                       ++ "#"
                       ++ replicate (rightBound - x) '.' ++ pure '\n'
   in concatMap displayOne xs
 
-instance Num (I -> I -> Bool) where
+instance Num (Interval -> Interval -> Bool) where
     p + q = \i j -> i `p` j /= i `q` j
     p * q = \i j -> i `p` j && i `q` j
     negate = id
@@ -244,20 +244,20 @@ instance Num (I -> I -> Bool) where
     signum = id
     fromInteger = error "`fromInteger` is not defined for binary conditionals."
 
-instance CoArbitrary I
+instance CoArbitrary Interval
 
-instance Show (I -> I -> Bool) where
+instance Show (Interval -> Interval -> Bool) where
     show p = let xs = Set.fromList [ interval i (i + 3) | i <- [1, 3.. 7] ]
              in show (relation xs p)
 
-instance Eq (I -> I -> Bool) where
+instance Eq (Interval -> Interval -> Bool) where
     p == q = let xs = Set.fromList [ interval i (i + 3) | i <- [1, 3.. 7] ]
              in relation xs p == relation xs q
 
 (+*) :: Num a => a -> a -> a
 x +* y = x + y + (x * y)
 
-precedes, meets, overlaps, isFinishedBy, contains, starts :: I -> I -> Bool
+precedes, meets, overlaps, isFinishedBy, contains, starts :: Interval -> Interval -> Bool
 precedes      =  \ i j  ->  right i < left j
 meets         =  \ i j  ->  right i == left j && left i /= left j && right i /= right j
 overlaps      =  \ i j  ->  left i < left j  && right i < right j  && right i > left j
@@ -271,13 +271,13 @@ joins = (fmap . fmap) not isDisjointWith
 touches = meets +* overlaps
 isRightwardsOf = flip (precedes +* touches)
 
-subsume :: Set I -> I -> Bool
+subsume :: Set Interval -> Interval -> Bool
 xs `subsume` x = any (`absorbs` x) (normalize xs)
 
-coveringChains :: I -> [I] -> [[I]]
+coveringChains :: Interval -> [Interval] -> [[Interval]]
 coveringChains x ys = coveringChains' x ys (interval ((\x -> x - 1) . left . bounds . flatten . Set.fromList $ ys) (left x))
 
-coveringChains' :: I -> [I] -> I -> [[I]]
+coveringChains' :: Interval -> [Interval] -> Interval -> [[Interval]]
 coveringChains' x ys limit = base ++ recursive 
   where
     base = do
@@ -294,7 +294,7 @@ coveringChains' x ys limit = base ++ recursive
 
 coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
 
-minimizeChain :: [I] -> [I]
+minimizeChain :: [Interval] -> [Interval]
 minimizeChain xs = last . converge $ ys
     where ys = iterate (join . flip cutTransitivitiesList touches) xs
 
@@ -313,8 +313,8 @@ cutTransitivities set rel =
   in if Set.null t then Set.singleton set else Set.map (`Set.delete` set) t
 
 -- λ traverse_ print $ coveringChains (interval 2 5) [interval 1 3, interval 2 4, interval 3 5, interval 4 6]
--- [I {left = 1, right = 3},I {left = 2, right = 4},I {left = 3, right = 5}]
--- [I {left = 1, right = 3},I {left = 2, right = 4},I {left = 4, right = 6}]
+-- [Interval {left = 1, right = 3},Interval {left = 2, right = 4},Interval {left = 3, right = 5}]
+-- [Interval {left = 1, right = 3},Interval {left = 2, right = 4},Interval {left = 4, right = 6}]
 
 -- Definition of a covering chain:
 -- 1. Sufficient: Subsumes the given interval.
@@ -423,7 +423,7 @@ main = defaultMain $ testGroup "Properties."
         [ testProperty "Shrinking intervals converges" \i ->
             within (10 ^ 4) . withMaxSuccess 1000
             $ let nubShrink = fmap List.nub . (>=> shrink)
-              in List.elem [ ] . take 1000 . fmap ($ (i :: I)) . iterate nubShrink $ return
+              in List.elem [ ] . take 1000 . fmap ($ (i :: Interval)) . iterate nubShrink $ return
         ]
 
     , testGroup "Relations on intervals."
@@ -502,7 +502,7 @@ main = defaultMain $ testGroup "Properties."
         ]
 
     , checkCommutativeRingAxioms (Proxy @Binary) "Binary"
-    , checkCommutativeRingAxioms (Proxy @(I -> I -> Bool)) "I -> I -> Bool"
+    , checkCommutativeRingAxioms (Proxy @(Interval -> Interval -> Bool)) "Interval -> Interval -> Bool"
 
     , testGroup "Chains."
         [ testProperty "A chain terminates" \base intervals ->
@@ -534,8 +534,8 @@ main = defaultMain $ testGroup "Properties."
 
 willemPaths x ys = (fmap.fmap) fromTuple $ paths' (toTuple x) (fmap toTuple ys)
   where
-    toTuple (I x y) = (x, y)
-    toTuple (P x) = (x, x)
+    toTuple (Interval x y) = (x, y)
+    toTuple (Point x) = (x, x)
     fromTuple = uncurry interval
 
 -- Example errors:
