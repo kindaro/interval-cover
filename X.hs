@@ -258,17 +258,17 @@ instance Eq (I -> I -> Bool) where
 x +* y = x + y + (x * y)
 
 precedes, meets, overlaps, isFinishedBy, contains, starts :: I -> I -> Bool
-precedes =     \ i j  ->  right i < left j
-meets =        \ i j  ->  right i == left j && left i /= left j && right i /= right j
-overlaps =     \ i j  ->  left i < left j  && right i < right j  && right i > left j
-isFinishedBy = \ i j  ->  left i < left j  && right i == right j
-contains =     \ i j  ->  left i < left j  && right i > right j
-starts =       \ i j  ->  left i == left j && right i < right j
+precedes      =  \ i j  ->  right i < left j
+meets         =  \ i j  ->  right i == left j && left i /= left j && right i /= right j
+overlaps      =  \ i j  ->  left i < left j  && right i < right j  && right i > left j
+isFinishedBy  =  \ i j  ->  left i < left j  && right i == right j
+contains      =  \ i j  ->  left i < left j  && right i > right j
+starts        =  \ i j  ->  left i == left j && right i < right j
 
 absorbs = isFinishedBy +* contains +* flip starts +* (==)
 isDisjointWith = precedes +* flip precedes
-touches = meets +* overlaps
 joins = (fmap . fmap) not isDisjointWith
+touches = meets +* overlaps
 isRightwardsOf = flip (precedes +* touches)
 
 subsume :: Set I -> I -> Bool
