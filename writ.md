@@ -25,11 +25,11 @@ With numbers _(or single points)_, there are only 3 disjoint qualitative relatio
                                 ^
                                 on the right end
 
-Considering that the left end of an interval is never to the right of its right end, this gives us
-`sum [5, 4.. 1] = 15` disjoint qualitative relations between two intervals. Disregarding the two
-relations where both ends of one interval are on the same end of another _(meaning the interval is
-a point)_, that gives 13. And now there is a [prior art][1] discussing exactly 13 disjoint
-exhaustive relations on intervals. _([Original article.][2])_
+Considering that the left end of an interval is never to the right of its right end _(duh)_, this
+gives us `sum [5, 4.. 1] = 15` disjoint qualitative relations between two intervals. Disregarding
+the two relations where both ends of one interval are on the same end of another _(meaning the
+interval is a point)_, that gives 13. And now there is a [prior art][1] discussing exactly 13
+disjoint exhaustive relations on intervals. _([Original article.][2])_
 
 [1]: https://www.ics.uci.edu/~alspaugh/cls/shr/allen.html
 [2]: https://cse.unl.edu/~choueiry/Documents/Allen-CACM1983.pdf
