@@ -443,8 +443,9 @@ main = defaultMain $ testGroup "Properties."
 
     , testGroup "Intervals."
         [ testProperty "Shrinking intervals converges" \i ->
-            within (10 ^ 4) . withMaxSuccess 1000
-            $ let nubShrink = fmap List.nub . (>=> shrink)
+            within (10 ^ 5) . withMaxSuccess 100
+            $ let _ = i :: Interval Float
+                  nubShrink = fmap List.nub . (>=> shrink)
               in List.elem [ ] . take 1000 . fmap ($ (i :: Interval Float)) . iterate nubShrink $ return
         ]
 
