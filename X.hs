@@ -12,8 +12,6 @@
 module Main where
 
 import Control.Monad
-import Data.List.Ordered (union)
-import Data.List (groupBy)
 import Data.Function (on)
 import Data.Foldable (null, toList)
 import Data.Set (Set)
@@ -28,7 +26,6 @@ import Test.Tasty.QuickCheck hiding (classify)
 import Test.Tasty.HUnit
 import qualified Test.Tasty.QuickCheck as QuickCheck
 import Test.Tasty
-import Data.Function
 import Data.Proxy
 import Control.DeepSeq
 import GHC.Generics (Generic)
@@ -47,9 +44,6 @@ classifyBy eq = Set.fromList . Map.elems . List.foldl' f Map.empty . Set.toList
     f m x = case List.find (`eq` x) (Map.keys m) of
         Just k  -> Map.insertWith Set.union k (Set.singleton x) m
         Nothing -> Map.insert x (Set.singleton x) m
-
-e1 = Set.fromList [ interval x (x + 2) | x <- [1..10] ]
-e2 = Set.fromList [ interval 1 3, interval 2 4, interval 5 7 ]
 
 normalize :: Ord a => Set (Interval a) -> Set (Interval a)
 normalize u | Set.null u = Set.empty
@@ -98,6 +92,7 @@ relation u f = Relation{..} where
 Relation{..} ? (x, y) = let { [i] = inverseLookup indices x ; [j] = inverseLookup indices y }
                         in toBool $ Matrix.getElem i j table
 
+isEmpty :: Relation a -> Bool
 isEmpty = null . indices
 
 randomIndex :: Relation a -> Gen a
@@ -122,9 +117,11 @@ isTransitive r = if isEmpty r then property True else
 
 data Binary = No | Yes deriving (Eq, Ord, Bounded, Enum)
 
+fromBool :: Bool -> Binary
 fromBool True = Yes
 fromBool False = No
 
+toBool :: Binary -> Bool
 toBool Yes = True
 toBool No = False
 
@@ -161,7 +158,7 @@ transitiveClosure Relation{..} = Relation { table = f table, .. }
           g = throughInteger g'
           throughInteger :: (Matrix Integer -> Matrix Integer -> Matrix Integer)
                          -> Matrix Binary -> Matrix Binary -> Matrix Binary
-          throughInteger f x y = fmap (toEnum . fromInteger . signum) $ f (fmap convert x) (fmap convert y)
+          throughInteger h x y = fmap (toEnum . fromInteger . signum) $ h (fmap convert x) (fmap convert y)
           convert = (fromIntegral :: Int -> Integer) . fromEnum
 
 closure :: Relation a -> Relation a
@@ -200,16 +197,19 @@ instance (Arbitrary a, Fractional a, Ord a) => Arbitrary (Interval a) where
             | abs x == abs y = [ interval x (nudge y)
                                , interval (nudge x) y
                                , interval (nudge x) (nudge y) ]
+            | otherwise = error "resizeTo0: Error: Interval is a pair without relation!"
         resizeTo0 (Point x)                    = [ point (nudge x) ]
 
 interval :: Ord a => a -> a -> Interval a
 interval x y | x == y   = Point x
              | x <  y   = Interval x y
              | x >  y   = Interval y x
+             | otherwise = error "interval: Error: Order on the underlying type is not total!"
 
 (~~) :: Ord a => a -> a -> Interval a
 (~~) = interval
 
+point :: Ord a => a -> Interval a
 point = Point
 
 left, right :: Interval a -> a
@@ -292,7 +292,7 @@ xs `subsume` x = any (`absorbs` x) (normalize xs)
 
 coveringChains :: forall a. (Ord a, Num a)
                => Interval a -> [Interval a] -> [[Interval a]]
-coveringChains x ys = coveringChains' x ys (interval ((\x -> x - 1) . left . bounds . flatten . Set.fromList $ ys) (left x))
+coveringChains x ys = coveringChains' x ys (interval ((\z -> z - 1) . left . bounds . flatten . Set.fromList $ ys) (left x))
 
 coveringChains' :: forall a. (Ord a, Num a)
                 => Interval a -> [Interval a] -> Interval a -> [[Interval a]]
@@ -312,6 +312,8 @@ coveringChains' x ys limit = base ++ recursive
                 (interval @a (right limit) (right y))
         return $ y: zs
 
+coveringMinimalChains :: forall a. (Ord a, Num a)
+               => Interval a -> [Interval a] -> [[Interval a]]
 coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
 
 minimizeChain :: (Eq a, Ord a) => [Interval a] -> [Interval a]
@@ -319,9 +321,9 @@ minimizeChain xs = last . converge $ ys
     where ys = iterate (join . flip cutTransitivitiesList touches) xs
 
 transitivities :: Ord a => Set a -> (a -> a -> Bool) -> Set a
-transitivities set (?) =
+transitivities set eq =
   let xs = Set.toList set
-  in Set.fromList [ y | x <- xs, y <- xs, z <- xs, x ? y, x ? z, y ? z ]
+  in Set.fromList [ y | x <- xs, y <- xs, z <- xs, x `eq` y, x `eq` z, y `eq` z ]
 
 cutTransitivitiesList :: Ord a => [a] -> (a -> a -> Bool) -> [[a]]
 cutTransitivitiesList set rel = Set.toList . Set.map Set.toList
@@ -356,52 +358,54 @@ instance (Arbitrary a, CoArbitrary a) => Arbitrary (MostlyNot a) where
         d6 <- fmap (`mod` 6) (arbitrary @Int)
         return $ MostlyNot \x y -> if d6 == 0 then f x y else False
 
+main :: IO ()
 main = defaultMain $ testGroup "Properties."
     [ testGroup "Cases."
         [ testGroup "Relations."
-            [ testCaseSteps "`absorbs`" \step -> do
-                assertBool "" $ interval 1 4 `absorbs` point 1
-                assertBool "" $ interval 1 4 `absorbs` interval 1 3
-                assertBool "" $ interval 1 4 `absorbs` interval 1 4
-                assertBool "" $ interval 1 4 `absorbs` interval 2 3
-                assertBool "" $ interval 1 4 `absorbs` interval 2 4
-                assertBool "" $ interval 1 4 `absorbs` point 4
-            , testCaseSteps "not `absorbs`" \step -> do
-                assertBool "" . not $ interval 1 4 `absorbs` point 0
-                assertBool "" . not $ interval 1 4 `absorbs` interval 0 1
-                assertBool "" . not $ interval 1 4 `absorbs` interval 0 2
-                assertBool "" . not $ interval 1 4 `absorbs` interval 0 4
-                assertBool "" . not $ interval 1 4 `absorbs` interval 1 5
-                assertBool "" . not $ interval 1 4 `absorbs` interval 2 5
-                assertBool "" . not $ interval 1 4 `absorbs` interval 4 5
-                assertBool "" . not $ interval 1 4 `absorbs` point 5
-            , testCaseSteps "`isRightwardsOf`" \step -> do
-                assertBool "" $ interval 2 4 `isRightwardsOf` interval 1 3
-            , testCaseSteps "not `isRightwardsOf`" \step -> do
-                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 1 5
-                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 2 5
-                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 3 5
-                assertBool "" . not $ interval 2 4 `isRightwardsOf` interval 4 5
+            [ testCaseSteps "`absorbs`" \_ -> do
+                assertBool "" $ interval @Int 1 4 `absorbs` point 1
+                assertBool "" $ interval @Int 1 4 `absorbs` interval 1 3
+                assertBool "" $ interval @Int 1 4 `absorbs` interval 1 4
+                assertBool "" $ interval @Int 1 4 `absorbs` interval 2 3
+                assertBool "" $ interval @Int 1 4 `absorbs` interval 2 4
+                assertBool "" $ interval @Int 1 4 `absorbs` point 4
+            , testCaseSteps "not `absorbs`" \_ -> do
+                assertBool "" . not $ interval @Int 1 4 `absorbs` point 0
+                assertBool "" . not $ interval @Int 1 4 `absorbs` interval 0 1
+                assertBool "" . not $ interval @Int 1 4 `absorbs` interval 0 2
+                assertBool "" . not $ interval @Int 1 4 `absorbs` interval 0 4
+                assertBool "" . not $ interval @Int 1 4 `absorbs` interval 1 5
+                assertBool "" . not $ interval @Int 1 4 `absorbs` interval 2 5
+                assertBool "" . not $ interval @Int 1 4 `absorbs` interval 4 5
+                assertBool "" . not $ interval @Int 1 4 `absorbs` point 5
+            , testCaseSteps "`isRightwardsOf`" \_ -> do
+                assertBool "" $ interval @Int 2 4 `isRightwardsOf` interval 1 3
+            , testCaseSteps "not `isRightwardsOf`" \_ -> do
+                assertBool "" . not $ interval @Int 2 4 `isRightwardsOf` interval 1 5
+                assertBool "" . not $ interval @Int 2 4 `isRightwardsOf` interval 2 5
+                assertBool "" . not $ interval @Int 2 4 `isRightwardsOf` interval 3 5
+                assertBool "" . not $ interval @Int 2 4 `isRightwardsOf` interval 4 5
         ]
+
         , testGroup "Chains."
             [ testCase "Simple covering chains"
-                $ coveringMinimalChains
+                $ coveringMinimalChains @Int
                     (interval 1 3) [interval 0 3, interval 0 4, interval 1 3, interval 1 4]
                         @?= [[interval 0 3], [interval 0 4], [interval 1 3], [interval 1 4]]
-            , testCaseSteps "Non-covering interval set" \step -> do
-                coveringMinimalChains
+            , testCaseSteps "Non-covering interval set" \_ -> do
+                coveringMinimalChains @Int
                     (interval 2 4)
                         [ interval 0 2, point 1, interval 1 2, interval 1 3
                         , point 2, interval 2 3
                         ]
                         @?= [ ]
-                coveringMinimalChains
+                coveringMinimalChains @Int
                     (interval 2 4)
                         [ point 3, interval 3 4, interval 3 5
                         , point 4, interval 4 5
                         ]
                         @?= [ ]
-                coveringMinimalChains
+                coveringMinimalChains @Int
                     (interval 2 5)
                         [ interval 0 2, point 1, interval 1 2, interval 1 3
                         , point 2, interval 2 3
@@ -411,12 +415,12 @@ main = defaultMain $ testGroup "Properties."
                         ]
                         @?= [ ]
             , testCase "A set with extra intervals and point join"
-                $ coveringMinimalChains
+                $ coveringMinimalChains @Int
                     (interval 2 5)
                     [interval 1 3, interval 2 4, interval 3 6]
                         @?= [ [interval 1 3, interval 3 6] ]
             , testCase "A set with extra intervals and extended join"
-                $ coveringMinimalChains
+                $ coveringMinimalChains @Int
                     (interval 2 7)
                     [interval 1 4, interval 2 5, interval 3 7]
                         @?= [ [interval 1 4, interval 3 7] ]
@@ -425,25 +429,25 @@ main = defaultMain $ testGroup "Properties."
 
     , testGroup "Relations."
         [ testProperty "The relation type is isomorphic to the original relation" $
-            displayingRelation \xs f rel -> if null (xs :: Set Int) then property True else
+            displayingRelation @Int \xs f rel -> if null (xs :: Set Int) then property True else
                 oneOfSet xs \x -> oneOfSet xs \y -> rel ? (x, y) ==  x `f` y
         , testProperty "A relation is not necessarily reflexive" $ expectFailure $
-            displayingRelation \_ _ rel -> isReflexive @Int rel
+            displayingRelation @Int \_ _ rel -> isReflexive @Int rel
         , testProperty "Reflexive closure of a relation is reflexive" $
-            displayingRelation \_ _ rel -> (isReflexive @Int . reflexiveClosure) rel
+            displayingRelation @Int \_ _ rel -> (isReflexive @Int . reflexiveClosure) rel
         , testProperty "A relation is not necessarily symmetric" $ expectFailure $
-            displayingRelation \_ _ rel -> isSymmetric @Int rel
+            displayingRelation @Int \_ _ rel -> isSymmetric @Int rel
         , testProperty "Symmetric closure of a relation is symmetric" $
-            displayingRelation \_ _ rel -> (isSymmetric @Int . symmetricClosure) rel
+            displayingRelation @Int \_ _ rel -> (isSymmetric @Int . symmetricClosure) rel
         , testProperty "A relation is not necessarily transitive" $ expectFailure $
-            displayingRelation \_ _ rel -> isTransitive @Int rel
+            displayingRelation @Int \_ _ rel -> isTransitive @Int rel
         , testProperty "Transitive closure of a relation is transitive" $
-            displayingRelation \_ _ rel -> (isTransitive @Int . transitiveClosure) rel
+            displayingRelation @Int \_ _ rel -> (isTransitive @Int . transitiveClosure) rel
         ]
 
     , testGroup "Intervals."
         [ testProperty "Shrinking intervals converges" \i ->
-            within (10 ^ 5) . withMaxSuccess 100
+            within (10 ^ (5 :: Int)) . withMaxSuccess 100
             $ let _ = i :: Interval Float
                   nubShrink = fmap List.nub . (>=> shrink)
               in List.elem [ ] . take 1000 . fmap ($ (i :: Interval Float)) . iterate nubShrink $ return
@@ -467,14 +471,14 @@ main = defaultMain $ testGroup "Properties."
 
     , testGroup "Classification."
         [ testProperty "Union inverts classification" $
-            displayingRelation \xs f rel ->
+            displayingRelation \xs _ rel ->
                 let _ = xs :: Set Int
                     equivalence = closure rel
                     classes = classifyBy (curry (equivalence ?)) xs
                 in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $
                         Set.unions classes == xs
         , testProperty "Intersection of a classification is empty" $
-            displayingRelation \xs f rel -> if Set.null xs then property True else
+            displayingRelation \xs _ rel -> if Set.null xs then property True else
                 let _ = xs :: Set Int
                     equivalence = closure rel
                     classes = classifyBy (curry (equivalence ?)) xs
@@ -482,20 +486,20 @@ main = defaultMain $ testGroup "Properties."
                         if Set.size classes == 1 then classes == Set.singleton xs else
                             foldr1 Set.intersection classes == Set.empty
         , testProperty "Belonging to the same class = equivalent by the defining relation" $
-            displayingRelation \xs f rel -> if Set.null xs then property True else
+            displayingRelation \xs _ rel -> if Set.null xs then property True else
                 let _ = xs :: Set Int
                     equivalence = closure rel
                     classes = classifyBy (curry (equivalence ?)) xs
-                    (===) :: Int -> Int -> Bool
-                    (===) = (==) `on` \x -> Set.filter (x `Set.member`) classes
+                    g :: Int -> Int -> Bool
+                    g = (==) `on` \x -> Set.filter (x `Set.member`) classes
                 in  QuickCheck.classify (Set.size classes > 1) "Non-trivial equivalence" $ property $
                         oneOfSet xs \x -> oneOfSet xs \y ->
                         counterexample (show $ Set.filter (x `Set.member`) classes) $
                         counterexample (show $ Set.filter (y `Set.member`) classes) $
                         counterexample (show equivalence) $
-                            equivalence ? (x, y) == (x === y)
+                            equivalence ? (x, y) == (x `g` y)
         , testProperty "Every element belongs to exactly one class" $
-            displayingRelation \xs f rel -> if Set.null xs then property True else
+            displayingRelation \xs _ rel -> if Set.null xs then property True else
                 let _ = xs :: Set Int
                     equivalence = (transitiveClosure . symmetricClosure . reflexiveClosure) rel
                     classes = classifyBy (curry (equivalence ?)) xs
@@ -536,7 +540,7 @@ main = defaultMain $ testGroup "Properties."
         [ testProperty "A chain terminates" \base intervals ->
             let _ = intervals :: [Interval Float]
                 chains = coveringChains base intervals
-            in within (10 ^ 4) . withMaxSuccess 1000
+            in within (10 ^ (4 :: Int)) . withMaxSuccess 1000
                 $ chains `deepseq` True
         , testProperty "A normalized chain is a singleton" \base intervals ->
             let _ = intervals :: [Interval Float]
@@ -551,22 +555,24 @@ main = defaultMain $ testGroup "Properties."
             let _ = intervals :: [Interval Float]
                 chains = coveringChains base intervals
                 subchains = List.nub (chains >>= dropOne)
-            in within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
+            in within (10 ^ (6 :: Int)) $ (or . fmap ((`subsume` base) . Set.fromList)
                 $ fmap normalizeList subchains) == False
         , testProperty "A Willem path is a cover" \base intervals ->
             let _ = intervals :: [Interval Float]
                 chains = Set.fromList . fmap (normalize . Set.fromList) $ willemPaths base intervals
             in and . Set.map (`subsume` base) $ chains
-        , testProperty "A Willem path is minimal" \base intervals ->
+        , testProperty "A Willem path is not minimal" \base intervals ->
             let _ = intervals :: [Interval Float]
                 chains = willemPaths base intervals
                 subchains = List.nub (chains >>= dropOne)
-            in within (10 ^ 6) $ (or . fmap ((`subsume` base) . Set.fromList)
-                $ fmap normalizeList subchains) == False
+            in expectFailure . within (10 ^ (6 :: Int))
+                $ (or . fmap ((`subsume` base) . Set.fromList)
+                    $ fmap normalizeList subchains) == False
         ]
     ]
 
-willemPaths x ys = (fmap.fmap) fromTuple $ paths' (toTuple x) (fmap toTuple ys)
+willemPaths :: Ord a => Interval a -> [Interval a] -> [[Interval a]]
+willemPaths u us = (fmap.fmap) fromTuple $ paths' (toTuple u) (fmap toTuple us)
   where
     toTuple (Interval x y) = (x, y)
     toTuple (Point x) = (x, x)
