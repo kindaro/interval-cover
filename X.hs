@@ -5,6 +5,7 @@
            , ScopedTypeVariables
            , DeriveGeneric
            , FlexibleInstances
+           , FlexibleContexts
   #-}
 
 {-# options_ghc  -fdefer-typed-holes #-}
@@ -570,51 +571,49 @@ main = defaultMain $ testGroup "Properties."
         ]
 
     , checkCommutativeRingAxioms (Proxy @Binary) "Binary"
-    , checkCommutativeRingAxioms (Proxy @(Interval Float -> Interval Float -> Bool)) "Interval a -> Interval a -> Bool"
+    , checkCommutativeRingAxioms (Proxy @(Interval Float -> Interval Float -> Bool))
+        "Interval a -> Interval a -> Bool"
 
     , testGroup "Chains."
+        [ checkSolution coveringChains (Proxy @Int) "`coveringChains` (Int)"
+        , checkSolution coveringChains (Proxy @Float) "`coveringChains` (Float)"
+        , checkSolution willemPaths (Proxy @Int) "`willemPaths` (Int)"
+        , checkSolution willemPaths (Proxy @Float) "`willemPaths` (Float)"
+        ]
+    ]
+
+checkSolution :: forall a. (Show a, NFData a, Arbitrary (Interval a), Num a, Ord a)
+              => (Interval a -> [Interval a] -> [[Interval a]]) -> Proxy a -> String -> TestTree
+checkSolution solution Proxy solutionName = testGroup ("Chains: " ++ show solutionName ++ ".")
         [ testProperty "A chain terminates" \base intervals ->
-            let _ = intervals :: [Interval Float]
-                chains = coveringChains base intervals
+            let _ = intervals :: [Interval a]
+                chains = solution base intervals
             in within (10 ^ (4 :: Int)) . withMaxSuccess 1000
                 $ chains `deepseq` True
         , testProperty "A normalized chain is a singleton" \base intervals ->
-            let _ = intervals :: [Interval Float]
-                normalChains = fmap normalizeList (coveringChains base intervals)
+            let _ = intervals :: [Interval a]
+                normalChains = fmap normalizeList (solution base intervals)
             in counterexample (show normalChains)
                 $ and . fmap ((1 ==) . length) $ normalChains
         , testProperty "A chain is a cover" \base intervals ->
-            let _ = intervals :: [Interval Float]
-                chains = Set.fromList . fmap (normalize . Set.fromList) $ coveringChains base intervals
+            let _ = intervals :: [Interval a]
+                chains = Set.fromList . fmap (normalize . Set.fromList) $ solution base intervals
             in and . Set.map (`subsume` base) $ chains
         , testProperty "A chain is minimal" \base intervals ->
-            let _ = intervals :: [Interval Float]
-                chains = coveringChains base intervals
+            let _ = intervals :: [Interval a]
+                chains = solution base intervals
                 subchains = List.nub (chains >>= dropOne)
             in within (10 ^ (6 :: Int)) $ (or . fmap ((`subsume` base) . Set.fromList)
                 $ fmap normalizeList subchains) == False
         , testProperty "Brute force search on null chain situations is fruitless"
             \base intervals3 ->
-             let intervals2 = getInfiniteList intervals3 :: [[Interval Float]]
-                 f = List.null . coveringChains base
+             let intervals2 = getInfiniteList intervals3 :: [[Interval a]]
+                 f = List.null . solution base
                  g = \xs -> length xs < 10
                  Just intervals = List.find f . filter g . take 100 $ intervals2
              in counterexample (show intervals)
                 $ length intervals > 7 ==> List.null (bruteForceCoveringChains base intervals)
-
-        , testProperty "A Willem path is a cover" \base intervals ->
-            let _ = intervals :: [Interval Float]
-                chains = Set.fromList . fmap (normalize . Set.fromList) $ willemPaths base intervals
-            in and . Set.map (`subsume` base) $ chains
-        , testProperty "A Willem path is not minimal" \base intervals ->
-            let _ = intervals :: [Interval Float]
-                chains = willemPaths base intervals
-                subchains = List.nub (chains >>= dropOne)
-            in expectFailure . within (10 ^ (6 :: Int))
-                $ (or . fmap ((`subsume` base) . Set.fromList)
-                    $ fmap normalizeList subchains) == False
         ]
-    ]
 
 willemPaths :: Ord a => Interval a -> [Interval a] -> [[Interval a]]
 willemPaths u us = (fmap.fmap) fromTuple $ paths' (toTuple u) (fmap toTuple us)
