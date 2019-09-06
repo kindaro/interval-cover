@@ -286,6 +286,7 @@ instance (Ord a, Num a, Enum a) => Eq (Interval a -> Interval a -> Bool) where
     p == q = let xs = Set.fromList [ interval i (i + 3) | i <- [1, 3.. 7] ]
              in relation xs p == relation xs q
 
+infixl 8 +*
 (+*) :: Num a => a -> a -> a
 x +* y = x + y + (x * y)
 
