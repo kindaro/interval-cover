@@ -305,7 +305,9 @@ xs `subsume` x = any (`absorbs` x) (normalize xs)
 
 coveringChains :: forall a. (Ord a, Num a)
                => Interval a -> [Interval a] -> [[Interval a]]
-coveringChains x ys = coveringChains' x ys (interval ((\z -> z - 1) . left . bounds . flatten . Set.fromList $ ys) (left x))
+coveringChains x ys = coveringChains' x ys initialLimit
+  where
+    initialLimit = interval ((\z -> z - 1) . left . bounds . flatten . Set.fromList $ ys) (left x)
 
 coveringChains' :: forall a. (Ord a, Num a)
                 => Interval a -> [Interval a] -> Interval a -> [[Interval a]]
@@ -335,8 +337,10 @@ isCovering base xs = case (Set.toList . normalize . Set.fromList) xs of
                         _   -> False
 
 isMinimalCovering :: Ord a => Interval a -> [Interval a] -> Bool
-isMinimalCovering base xs = isCovering base xs
-    && List.null (filter (isCovering base) (fmap (`deleteAt` xs) [0.. length xs - 1]))
+isMinimalCovering base xs = sufficient && minimal
+    where sufficient = isCovering base xs
+          minimal    = List.null . filter (isCovering base)
+                                 . fmap (`deleteAt` xs) $ [0.. length xs - 1]
 
 bruteForceCoveringChains :: forall a. (Ord a, Num a)
                          => Interval a -> [Interval a] -> [[Interval a]]
@@ -497,7 +501,8 @@ main = defaultMain $ testGroup "Properties."
                 in QuickCheck.withMaxSuccess 1000 do
                     (s, t) <- anyTwo rels
                     return
-                        $ counterexample (show s) . counterexample (show t) $ elementwise (*) s t == blank intervals
+                        $ counterexample (show s) . counterexample (show t)
+                        $ elementwise (*) s t == blank intervals
             ]
 
     , testGroup "Classification."
