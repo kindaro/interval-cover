@@ -268,13 +268,30 @@ displayIntervals xs =
                       ++ replicate (rightBound' - x') '.' ++ pure '\n'
   in concatMap displayOne xs
 
-instance Num (Interval a -> Interval a -> Bool) where
-    p + q = \i j -> i `p` j /= i `q` j
-    p * q = \i j -> i `p` j && i `q` j
+instance Num Bool where
+    (+) = (/=)
+    (*) = (&&)
     negate = id
     abs = id
     signum = id
-    fromInteger = error "`fromInteger` is not defined for binary conditionals."
+    fromInteger = toEnum . fromInteger
+
+
+-- instance {-# overlappable #-} Num (Interval a -> Bool) where
+--     p + q = \i -> p i /= q i
+--     p * q = \i -> p i && q i
+--     negate = id
+--     abs = id
+--     signum = id
+--     fromInteger = error "`fromInteger` is not defined for the ring of functions."
+
+instance Num b => Num (Interval a -> b) where
+    p + q = \i -> p i + q i
+    p * q = \i -> p i * q i
+    negate = id
+    abs = id
+    signum = id
+    fromInteger = error "`fromInteger` is not defined for the ring of functions."
 
 instance CoArbitrary a => CoArbitrary (Interval a)
 
