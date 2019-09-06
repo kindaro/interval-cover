@@ -199,11 +199,11 @@ instance {-# overlappable #-} (Arbitrary a, Fractional a, Ord a) => Arbitrary (I
         if d6 == 0
             then do
                 spread <- scale (* 5) arbitrary
-                return $ point spread
+                return $ point (spread + 100)
             else do
                 size <- arbitrary
                 spread <- scale (* 5) arbitrary
-                return $ interval (spread - size / 2) (spread + size / 2)
+                return $ interval (spread - size / 2) (spread + size / 2 + 100)
     shrink (Point 0) = [ ]
     shrink (Interval 0 0) = [ ]
     shrink i = resizeTo0 i
