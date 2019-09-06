@@ -57,18 +57,19 @@ about 8 _thousand_. Some of those will be of use to us within this problem:
     ...
 
 Given these relations, we can manipulate them to obtain all kinds of awesome devices, such as
-closures, equivalences and orders. I will presently use some of these to verify solutions to our
-problem.
+closures, equivalences and orders. I will presently use some to obtain a verifier of solutions to
+our problem.
 
 1. A reflexive, symmetric and transitive closure of `joins` is an equivalence under which
-   considered equivalent are those intervals that belong to a contiguous line.
+   considered equivalent are those intervals that belong to a contiguous line. _(While not
+   necessarily being adjacent on that line.)_
 2. A _normal_ set of intervals is such in which all intervals are disjoint.
     * Any set may be _normalized_ by gluing together intervals that join until none are left.
-    * Normalization preserves coverage: if a point belongs to some of the intervals in a set, it
-      will belong to an interval in its normalization.
+    * Normalization preserves coverage: exactly when a point belongs to some of the intervals in a
+      set, it will belong to some interval in its normalization.
 3. A solution is a chain such that:
     * Its normalization is a singleton set whose only member `absorbs` the base. _(Sufficient.)_
-    * With any link removed, this condition does not hold. _(Minimal.)_
+    * With any link removed, this condition does not anymore hold. _(Minimal.)_
 
 Therefore, `normalize` is a function that divides a set of intervals into classes of equivalence
 induced by `joins` and converts each class to an interval by taking the extrema of all the
@@ -91,6 +92,53 @@ endpoints.
                 | otherwise = let  rel = closure (relation u joins)
                                    classes = classifyBy (curry (rel ?)) u
                               in Set.map (bounds . flatten) classes
+
+
+In these terms, we can define the check:
+
+    isCovering :: Ord a => Interval a -> [Interval a] -> Bool
+    isCovering base xs = case (Set.toList . normalize . Set.fromList) xs of
+                            [y] -> y `absorbs` base
+                            _   -> False
+
+    isMinimalCovering :: Ord a => Interval a -> [Interval a] -> Bool
+    isMinimalCovering base xs = sufficient && minimal
+        where sufficient = isCovering base xs
+              minimal    = List.null . filter (isCovering base)
+                                     . fmap (`deleteAt` xs) $ [0.. length xs - 1]
+
+Not only that, we can define a filter:
+
+    bruteForceCoveringChains :: forall a. (Ord a, Num a)
+                             => Interval a -> [Interval a] -> [[Interval a]]
+    bruteForceCoveringChains base xs = filter (isMinimalCovering base) (List.subsequences xs)
+
+The complexity of these devices is crazy. Empirically, this brute force solution can munch through
+a set of 10 intervals, but not 20. But that much is enough to check a candidate fast algorithm
+against.
+
+### Onwards now!
+
+All the links in our chain must connect, like... links of a chain. One after the other. There is a
+relation for that: the one I named `touches`. If a series of intervals consecutively touch one
+another, we are certain that they cover the space from the beginning of the first to the ending of
+the last one. We can use this relation to consecutively filter more and more links into our chain
+until it subsumes the base completely.
+
+Incidentally, `touches` is an antisymmetric relation _(technically, its reflexive closure would
+be)_, which makes its transitive closure an instance of _ordering_, and a _chain_ is exactly a
+totally ordered subset of intervals.
+
+This is not enough though: we must also ensure our chain is minimal. I claim that this condition
+holds exactly when `touches` is _nowhere transitive_. That means: when <code>x `touches` y</code>
+and <code>y `touches` z</code>, it is never that <code>x `touches` z</code>. If it were, we would
+not need `y` in our chain. Observe that, like links in a real chain, our _"links"_ must only
+overlap two at a time. This requirement may be paraphrased in terms of interval relations: a link
+must _be touched by_ the interval between the end of the previous link and the one before the
+previous. It sounds a bit baroque, but I am sure the reader may depict this situation in their
+mind or on a piece of paper.
+
+This is all that is needed to give a recursive definition that we are looking for.
 
 
 Outline:
