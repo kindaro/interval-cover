@@ -465,46 +465,7 @@ main = defaultMain $ testGroup "Properties."
                 assertBool "" . not $ interval @Int 2 4 `isRightwardsOf` interval 3 5
                 assertBool "" . not $ interval @Int 2 4 `isRightwardsOf` interval 4 5
         ]
-
-        , testGroup "Chains."
-            [ testCase "Simple covering chains"
-                $ coveringMinimalChains @Int
-                    (interval 1 3) [interval 0 3, interval 0 4, interval 1 3, interval 1 4]
-                        @?= [[interval 0 3], [interval 0 4], [interval 1 3], [interval 1 4]]
-            , testCaseSteps "Non-covering interval set" \_ -> do
-                coveringMinimalChains @Int
-                    (interval 2 4)
-                        [ interval 0 2, point 1, interval 1 2, interval 1 3
-                        , point 2, interval 2 3
-                        ]
-                        @?= [ ]
-                coveringMinimalChains @Int
-                    (interval 2 4)
-                        [ point 3, interval 3 4, interval 3 5
-                        , point 4, interval 4 5
-                        ]
-                        @?= [ ]
-                coveringMinimalChains @Int
-                    (interval 2 5)
-                        [ interval 0 2, point 1, interval 1 2, interval 1 3
-                        , point 2, interval 2 3
-                        , point 3
-                        , point 4, interval 4 5, interval 4 6
-                        , point 5, interval 5 6
-                        ]
-                        @?= [ ]
-            , testCase "A set with extra intervals and point join"
-                $ coveringMinimalChains @Int
-                    (interval 2 5)
-                    [interval 1 3, interval 2 4, interval 3 6]
-                        @?= [ [interval 1 3, interval 3 6] ]
-            , testCase "A set with extra intervals and extended join"
-                $ coveringMinimalChains @Int
-                    (interval 2 7)
-                    [interval 1 4, interval 2 5, interval 3 7]
-                        @?= [ [interval 1 4, interval 3 7] ]
-            ]
-        ]
+    ]
 
     , testGroup "Relations."
         [ testProperty "The relation type is isomorphic to the original relation" $
@@ -635,34 +596,76 @@ main = defaultMain $ testGroup "Properties."
 checkSolution :: forall a. (Show a, NFData a, Arbitrary (Interval a), Num a, Ord a)
               => (Interval a -> [Interval a] -> [[Interval a]]) -> Proxy a -> String -> TestTree
 checkSolution solution Proxy solutionName = testGroup ("Chains: " ++ show solutionName ++ ".")
-        [ testProperty "A chain terminates" \base intervals ->
-            let _ = intervals :: [Interval a]
-                chains = solution base intervals
-            in within (10 ^ (4 :: Int)) . withMaxSuccess 1000
-                $ chains `deepseq` True
-        , testProperty "A normalized chain is a singleton" \base intervals ->
-            let _ = intervals :: [Interval a]
-                normalChains = fmap normalizeList (solution base intervals)
-            in counterexample (show normalChains)
-                $ and . fmap ((1 ==) . length) $ normalChains
-        , testProperty "A chain is a cover" \base intervals ->
-            let _ = intervals :: [Interval a]
-                chains = Set.fromList . fmap (normalize . Set.fromList) $ solution base intervals
-            in and . Set.map (`subsume` base) $ chains
-        , testProperty "A chain is minimal" \base intervals ->
-            let _ = intervals :: [Interval a]
-                chains = solution base intervals
-                subchains = List.nub (chains >>= dropOne)
-            in within (10 ^ (6 :: Int)) $ (or . fmap ((`subsume` base) . Set.fromList)
-                $ fmap normalizeList subchains) == False
-        , testProperty "Brute force search on null chain situations is fruitless"
-            \base intervals3 ->
-             let intervals2 = getInfiniteList intervals3 :: [[Interval a]]
-                 f = List.null . solution base
-                 g = \xs -> length xs < 10
-                 Just intervals = List.find f . filter g . take 100 $ intervals2
-             in counterexample (show intervals)
-                $ length intervals > 7 ==> List.null (bruteForceCoveringChains base intervals)
+
+        [ testGroup "Cases."
+            [ testCase "Simple covering chains"
+                $ solution
+                    (interval 1 3) [interval 0 3, interval 0 4, interval 1 3, interval 1 4]
+                        @?= [[interval 0 3], [interval 0 4], [interval 1 3], [interval 1 4]]
+            , testCaseSteps "Non-covering interval set" \_ -> do
+                solution
+                    (interval 2 4)
+                        [ interval 0 2, point 1, interval 1 2, interval 1 3
+                        , point 2, interval 2 3
+                        ]
+                        @?= [ ]
+                solution
+                    (interval 2 4)
+                        [ point 3, interval 3 4, interval 3 5
+                        , point 4, interval 4 5
+                        ]
+                        @?= [ ]
+                solution
+                    (interval 2 5)
+                        [ interval 0 2, point 1, interval 1 2, interval 1 3
+                        , point 2, interval 2 3
+                        , point 3
+                        , point 4, interval 4 5, interval 4 6
+                        , point 5, interval 5 6
+                        ]
+                        @?= [ ]
+            , testCase "A set with extra intervals and point join"
+                $ solution
+                    (interval 2 5)
+                    [interval 1 3, interval 2 4, interval 3 6]
+                        @?= [ [interval 1 3, interval 3 6] ]
+            , testCase "A set with extra intervals and extended join"
+                $ solution
+                    (interval 2 7)
+                    [interval 1 4, interval 2 5, interval 3 7]
+                        @?= [ [interval 1 4, interval 3 7] ]
+            ]
+
+        , testGroup "Properties."
+            [ testProperty "A chain terminates" \base intervals ->
+                let _ = intervals :: [Interval a]
+                    chains = solution base intervals
+                in within (10 ^ (4 :: Int)) . withMaxSuccess 1000
+                    $ chains `deepseq` True
+            , testProperty "A normalized chain is a singleton" \base intervals ->
+                let _ = intervals :: [Interval a]
+                    normalChains = fmap normalizeList (solution base intervals)
+                in counterexample (show normalChains)
+                    $ and . fmap ((1 ==) . length) $ normalChains
+            , testProperty "A chain is a cover" \base intervals ->
+                let _ = intervals :: [Interval a]
+                    chains = Set.fromList . fmap (normalize . Set.fromList) $ solution base intervals
+                in and . Set.map (`subsume` base) $ chains
+            , testProperty "A chain is minimal" \base intervals ->
+                let _ = intervals :: [Interval a]
+                    chains = solution base intervals
+                    subchains = List.nub (chains >>= dropOne)
+                in within (10 ^ (6 :: Int)) $ (or . fmap ((`subsume` base) . Set.fromList)
+                    $ fmap normalizeList subchains) == False
+            , testProperty "Brute force search on null chain situations is fruitless"
+                \base intervals3 ->
+                 let intervals2 = getInfiniteList intervals3 :: [[Interval a]]
+                     f = List.null . solution base
+                     g = \xs -> length xs < 10
+                     Just intervals = List.find f . filter g . take 100 $ intervals2
+                 in counterexample (show intervals)
+                    $ length intervals > 5 ==> List.null (bruteForceCoveringChains base intervals)
+            ]
         ]
 
 willemPaths :: Ord a => Interval a -> [Interval a] -> [[Interval a]]
