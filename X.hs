@@ -355,6 +355,31 @@ coveringMinimalChains :: forall a. (Ord a, Num a)
                => Interval a -> [Interval a] -> [[Interval a]]
 coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
 
+chainsFromTo :: Ord a => Interval a -> Interval a -> [Interval a] -> [[Interval a]]
+chainsFromTo start end xs' = base ++ recursive
+  where
+    xs = filter (not . isDisjointWith (interval (right start) (left end))) xs'
+
+    base = do
+        x <- filter ((start `touches`) +* (`touches` end)) xs
+        return [x]
+
+    recursive = do
+        z <- filter ((start `touches`)) xs
+        let xs' = filter (`isRightwardsOf` z) xs
+        let start' = interval (right start) (right z)
+        zs <- chainsFromTo start' end xs'
+
+        return $ z: zs
+
+coveringChainsFromTo :: forall a. (Ord a, Num a)
+                     => Interval a -> [Interval a] -> [[Interval a]]
+coveringChainsFromTo base xs = chainsFromTo start end xs
+  where
+    start = interval ((\z -> z - 1) . left $ boundsOfXs) (left base)
+    end = interval (right base) ((\z -> z + 1) . right $ boundsOfXs)
+    boundsOfXs = (bounds . flatten . Set.fromList) xs
+
 isCovering :: Ord a => Interval a -> [Interval a] -> Bool
 isCovering base xs = case (Set.toList . normalize . Set.fromList) xs of
                         [y] -> y `absorbs` base
@@ -600,6 +625,8 @@ main = defaultMain $ testGroup "Properties."
     , testGroup "Chains."
         [ checkSolution coveringChains (Proxy @Int) "`coveringChains` (Int)"
         , checkSolution coveringChains (Proxy @Float) "`coveringChains` (Float)"
+        , checkSolution coveringChainsFromTo (Proxy @Int) "`coveringChainsFromTo` (Int)"
+        , checkSolution coveringChainsFromTo (Proxy @Float) "`coveringChainsFromTo` (Float)"
         , checkSolution willemPaths (Proxy @Int) "`willemPaths` (Int)"
         , checkSolution willemPaths (Proxy @Float) "`willemPaths` (Float)"
         ]
