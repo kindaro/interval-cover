@@ -99,7 +99,8 @@ isEmpty = null . indices
 randomIndex :: Relation a -> Gen a
 randomIndex = oneof . fmap return . Map.elems . indices
 
-isReflexive, isSymmetric, isAntisymmetric, isTransitive :: (Eq a, Show a) => Relation a -> Property
+isReflexive, isSymmetric, isAntisymmetric, isTransitive, isTotal
+    :: (Eq a, Show a) => Relation a -> Property
 
 isReflexive r = if isEmpty r then property True else
     forAll (randomIndex r) \x ->
@@ -120,6 +121,11 @@ isTransitive r = if isEmpty r then property True else
     forAll (randomIndex r) \y ->
     forAll (randomIndex r) \z ->
     r ? (x, y) && r ? (y, z) ==> r ? (x, z)
+
+isTotal r = if isEmpty r then property True else
+    forAll (randomIndex r) \x ->
+    forAll (randomIndex r) \y ->
+    r ? (x, y) || r ? (y, x)
 
 data Binary = No | Yes deriving (Eq, Ord, Bounded, Enum)
 
