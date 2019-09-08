@@ -176,4 +176,4 @@ code in [a repository][repo].
 
 ### That is it.
 
-Let me know if my presentation is not clear or if I missed something.
+I hope it helps. Do comment if my presentation is not clear or if I missed something.
