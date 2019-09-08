@@ -125,9 +125,10 @@ another, we are certain that they cover the space from the beginning of the firs
 the last one. We can use this relation to consecutively filter more and more links into our chain
 until it subsumes the base completely.
 
-Incidentally, `touches` is an antisymmetric relation _(technically, its reflexive closure would
-be)_, which makes its transitive closure an instance of _ordering_, and a _chain_ is exactly a
-totally ordered subset of intervals.
+Incidentally, `touches` is an antisymmetric relation, which makes its transitive and reflexive
+closure an _ordering_ of intervals, and a _chain_ in order theory is exactly a totally ordered
+set. So, our naming is justified: there is a relation that is not a total ordering for arbitrary
+sets of intervals, but is a total ordering for our chains.
 
 This is not enough though: we must also ensure our chain is minimal. I claim that this condition
 holds exactly when `touches` is _nowhere transitive_. That means: when <code>x `touches` y</code>
