@@ -635,12 +635,12 @@ caseSolution solution Proxy solutionName = testGroup ("Cases for " ++ solutionNa
         $ solution
             (interval 2 5)
             [interval 1 3, interval 2 4, interval 3 6]
-                @?= [ [interval 1 3, interval 3 6] ]
+                @?= [ [interval 1 3, interval 3 6], [interval 2 4, interval 3 6] ]
     , testCase "A set with extra intervals and extended join"
         $ solution
             (interval 2 7)
             [interval 1 4, interval 2 5, interval 3 7]
-                @?= [ [interval 1 4, interval 3 7] ]
+                @?= [ [interval 1 4, interval 3 7], [interval 2 5, interval 3 7] ]
     ]
 
 propSolution :: forall a. (Show a, NFData a, Arbitrary (Interval a), Num a, Ord a)
