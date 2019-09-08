@@ -364,9 +364,13 @@ coveringMinimalChains :: forall a. (Ord a, Num a)
 coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
 
 chainsFromTo :: Ord a => Interval a -> Interval a -> [Interval a] -> [[Interval a]]
-chainsFromTo start end xs' = baseCase ++ recursiveCase
+chainsFromTo start end xs' = case base of
+    Point _ -> (fmap pure . filter (`absorbs` base)) xs'
+    _       -> baseCase ++ recursiveCase
   where
-    xs = filter (not . isDisjointWith (right start ~~ left end)) xs'
+    base = right start ~~ left end
+
+    xs = filter (not . isDisjointWith base) xs'
 
     baseCase = do
         x <- filter ((start `touches`) * (`touches` end)) xs
@@ -379,6 +383,7 @@ chainsFromTo start end xs' = baseCase ++ recursiveCase
 
 coveringChainsFromTo :: forall a. (Ord a, Num a)
                      => Interval a -> [Interval a] -> [[Interval a]]
+coveringChainsFromTo _   [ ] = [ ]
 coveringChainsFromTo base xs = chainsFromTo start end xs
   where
     start = (\z -> z - 1) (left reach) ~~ left base
