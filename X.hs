@@ -599,6 +599,23 @@ main = defaultMain $ testGroup "Properties."
         , checkSolution willemPaths (Proxy @Int) "`willemPaths` (Int)"
         , checkSolution willemPaths (Proxy @Float) "`willemPaths` (Float)"
         ]
+
+    , testGroup "Total order of chains."
+        [ testProperty "Antisymmetric overall" \intervals ->
+            let _ = intervals :: [Interval Int]
+            in isAntisymmetric (relation (Set.fromList intervals) touches)
+        , testProperty "Refl/trans closure not total overall" \intervals ->
+            let _ = intervals :: [Interval Int]
+            in expectFailure $ (isTotal . transitiveClosure . reflexiveClosure)
+                                        (relation (Set.fromList intervals) touches)
+        , testProperty "Refl/trans closure is total on chains" \base intervals ->
+            let _ = intervals :: [Interval Int]
+                xs = coveringChains base intervals
+            in (not . null) xs ==> do
+                x <- (oneof . fmap return) xs
+                return $ (isTotal . transitiveClosure . reflexiveClosure)
+                            (relation (Set.fromList x) touches)
+        ]
     ]
 
 checkSolution :: forall a. (Show a, NFData a, Arbitrary (Interval a), Num a, Ord a)
