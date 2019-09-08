@@ -333,58 +333,57 @@ isRightwardsOf = flip (precedes +* touches)
 subsume :: Ord a => Set (Interval a) -> Interval a -> Bool
 xs `subsume` x = any (`absorbs` x) (normalize xs)
 
-coveringChains :: forall a. (Ord a, Num a)
-               => Interval a -> [Interval a] -> [[Interval a]]
-coveringChains x ys = coveringChains' x ys initialLimit
+coveringChains
+    :: forall a. (Ord a, Num a)
+    => Interval a -> [Interval a] -> [[Interval a]]
+coveringChains base intervals = coveringChains' base intervals initial
   where
-    initialLimit = interval ((\z -> z - 1) . left . bounds . flatten . Set.fromList $ ys) (left x)
+    initial = interval ((\z -> z - 1) . left . bounds . flatten . Set.fromList $ intervals) (left base)
 
-coveringChains' :: forall a. (Ord a, Num a)
-                => Interval a -> [Interval a] -> Interval a -> [[Interval a]]
-coveringChains' x ys limit = base ++ recursive 
+coveringChains'
+    :: forall a. (Ord a, Num a)
+    => Interval a -> [Interval a] -> Interval a -> [[Interval a]]
+coveringChains' base intervals initial = nonRecursive ++ recursive 
   where
-    base :: [[Interval a]]
-    base = do
-        y <- filter ((limit `touches`) +* (limit `isFinishedBy`)) ys
-        if y `absorbs` x then return (pure y) else fail ""
+    nonRecursive :: [[Interval a]]
+    nonRecursive = do
+        x <- filter ((initial `touches`) +* (initial `isFinishedBy`)) intervals
+        if x `absorbs` base then return (pure x) else fail ""
 
     recursive :: [[Interval a]]
     recursive = do
-        y <- filter (\y -> (y `overlaps` x || y `starts` x) && limit `touches` y) ys
-        zs <- coveringChains' @a
-                (interval @a (right y) (right x))
-                ((filter (`isRightwardsOf` y)) ys)
-                (interval @a (right limit) (right y))
-        return $ y: zs
+        x <- filter (\y -> (y `overlaps` base || y `starts` base) && initial `touches` y) intervals
+        xs <- coveringChains'
+                (interval (right x) (right base))
+                ((filter (`isRightwardsOf` x)) intervals)
+                (interval (right initial) (right x))
+        return $ x: xs
 
 coveringMinimalChains :: forall a. (Ord a, Num a)
                => Interval a -> [Interval a] -> [[Interval a]]
 coveringMinimalChains x = List.nub . fmap minimizeChain . coveringChains x
 
 chainsFromTo :: Ord a => Interval a -> Interval a -> [Interval a] -> [[Interval a]]
-chainsFromTo start end xs' = base ++ recursive
+chainsFromTo start end xs' = baseCase ++ recursiveCase
   where
-    xs = filter (not . isDisjointWith (interval (right start) (left end))) xs'
+    xs = filter (not . isDisjointWith (right start ~~ left end)) xs'
 
-    base = do
+    baseCase = do
         x <- filter ((start `touches`) * (`touches` end)) xs
         return [x]
 
-    recursive = do
-        z <- filter ((start `touches`) * not . (`touches` end)) xs
-        let xs' = filter (`isRightwardsOf` z) xs
-        let start' = interval (right start) (right z)
-        zs <- chainsFromTo start' end xs'
-
-        return $ z: zs
+    recursiveCase = do
+        x <- filter ((start `touches`) * not . (`touches` end)) xs
+        xs <- chainsFromTo (right start ~~ right x) end (filter (`isRightwardsOf` x) xs)
+        return $ x: xs
 
 coveringChainsFromTo :: forall a. (Ord a, Num a)
                      => Interval a -> [Interval a] -> [[Interval a]]
 coveringChainsFromTo base xs = chainsFromTo start end xs
   where
-    start = interval ((\z -> z - 1) . left $ boundsOfXs) (left base)
-    end = interval (right base) ((\z -> z + 1) . right $ boundsOfXs)
-    boundsOfXs = (bounds . flatten . Set.fromList) xs
+    start = (\z -> z - 1) (left reach) ~~ left base
+    end = right base ~~ (\z -> z + 1) (right reach)
+    reach = (bounds . flatten . Set.fromList) xs
 
 isCovering :: Ord a => Interval a -> [Interval a] -> Bool
 isCovering base xs = case (Set.toList . normalize . Set.fromList) xs of
