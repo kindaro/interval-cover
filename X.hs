@@ -369,7 +369,7 @@ chainsFromTo start end xs' = baseCase ++ recursiveCase
     xs = filter (not . isDisjointWith (right start ~~ left end)) xs'
 
     baseCase = do
-        x <- filter (((start `isFinishedBy`) +* (start `touches`)) * ((`touches` end) +* (`starts` end))) xs
+        x <- filter ((start `touches`) * (`touches` end)) xs
         return [x]
 
     recursiveCase = do
