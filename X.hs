@@ -339,12 +339,12 @@ coveringChains' x ys limit = base ++ recursive
   where
     base :: [[Interval a]]
     base = do
-        y <- filter (limit `touches`) ys
+        y <- filter ((limit `touches`) +* (limit `isFinishedBy`)) ys
         if y `absorbs` x then return (pure y) else fail ""
 
     recursive :: [[Interval a]]
     recursive = do
-        y <- filter (\y -> y `overlaps` x && limit `touches` y) ys
+        y <- filter (\y -> (y `overlaps` x || y `starts` x) && limit `touches` y) ys
         zs <- coveringChains' @a
                 (interval @a (right y) (right x))
                 ((filter (`isRightwardsOf` y)) ys)
