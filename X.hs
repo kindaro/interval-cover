@@ -674,6 +674,11 @@ propSolution solution Proxy solutionName = testGroup ("Properties for " ++ solut
              Just intervals = List.find f . filter g . take 100 $ intervals2
          in counterexample (show intervals)
             $ length intervals > 5 ==> List.null (bruteForceCoveringChains base intervals)
+    , testProperty "Equivalent to brute force search" \base intervals' ->
+        let intervals = take 9 intervals' :: [Interval a]
+            s = List.sort . fmap List.sort $ solution                 base intervals
+            t = List.sort . fmap List.sort $ bruteForceCoveringChains base intervals
+        in s === t
     ]
 
 willemPaths :: Ord a => Interval a -> [Interval a] -> [[Interval a]]
