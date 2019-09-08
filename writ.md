@@ -133,13 +133,13 @@ set. So, our naming is justified: there is a relation that is not a total orderi
 sets of intervals, but is a total ordering for our chains.
 
 This is not enough though: we must also ensure our chain is minimal. I claim that this condition
-holds exactly when `touches` is _nowhere transitive_ on our chain. That means: when <code>x
-`touches` y</code> and <code>y `touches` z</code>, it is never that <code>x `touches` z</code>
-_(Otherwise, we would not need `y` in our chain.)_.  Observe that, like links in a real chain, our
-_"links"_ must only overlap two at a time. This requirement may be paraphrased in terms of
-interval relations: a link must _be touched by_ the interval between the end of the previous link
-and the one before the previous. It sounds a bit baroque, but I am sure the reader may depict this
-situation in their mind or on a piece of paper.
+holds exactly when `touches` is _nowhere transitive_ on our chain. That means: when
+``x `touches` y`` and ``y `touches` z``, it is never that ``x `touches` z`` _(Otherwise, we would
+not need `y` in our chain.)_.  Observe that, like links in a real chain, our _"links"_ must only
+overlap two at a time. This requirement may be paraphrased in terms of interval relations: a link
+must _be touched by_ the interval between the end of the previous link and the one before the
+previous. It sounds a bit baroque, but I am sure the reader may depict this situation in their
+mind or on a piece of paper.
 
 And this is all that is needed to give a recursive definition that we are looking for.
 
@@ -174,7 +174,7 @@ Once you have it, it looks straightforward, but I tried like a dozen times to ma
 only extensive checking helped me locate and fix all the corner cases. You can see the complete
 code in [a repository][repo].
 
-[repo]: ...
+[repo]: https://github.com/kindaro/interval-cover
 
 ### That is it.
 
