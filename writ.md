@@ -6,18 +6,20 @@ because intervals are unlike numbers in that there is no such simple notion as t
 order anymore, and what relations we have instead are tenfold more complex — too far so for the
 unarmed human mind to grasp.
 
+Therefore, what our goals should be?
+
 1. We need to understand how intervals relate to each other.
 2. We need to be able to check if a given set of intervals is a solution to the problem.
 
-I will be saying _"base"_ meaning the interval to be covered, and _"chain"_ consisting of
-_"links"_ meaning a set of intervals that may be covering it. _(I will eventually justify this
-naming.)_
+In this writing, I will be saying _"base"_ meaning the interval to be covered, and _"chain"_
+consisting of _"links"_ meaning a set of intervals that may be covering it. _(I will eventually
+justify this latter naming.)_
 
 ### So, let us arm ourselves.
 
-With numbers _(or single points)_, there are only 3 disjoint qualitative relations: `a < b` or `a
-= b` or `a > b`. What can we say about pairs of numbers _(representing intervals)_ then? There are
-5 places a point can be with respect to an interval:
+With numbers _(that is, single points)_, there are only 3 disjoint qualitative relations: `a < b`
+or `a = b` or `a > b`. What can we say about pairs of numbers _(representing intervals)_ then?
+There are 5 places a point can be with respect to an interval:
 
                  on the left end
                  v
@@ -34,7 +36,7 @@ disjoint exhaustive relations on intervals. _([Original article.][2])_
 [1]: https://www.ics.uci.edu/~alspaugh/cls/shr/allen.html
 [2]: https://cse.unl.edu/~choueiry/Documents/Allen-CACM1983.pdf
 
-Namely, James Allen defines these 6 relations:
+Namely, there are defined these 6 relations:
 
     precedes      =  \ i j  ->  right i < left j
     meets         =  \ i j  ->  right i == left j && left i /= left j && right i /= right j
