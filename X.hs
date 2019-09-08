@@ -113,7 +113,7 @@ isSymmetric r = if isEmpty r then property True else
 isAntisymmetric r = if isEmpty r then property True else
     forAll (randomIndex r) \x ->
     forAll (randomIndex r) \y ->
-    r ? (x, y) /= r ? (y, x)
+    if r ? (x, y) && r ? (y, x) && x /= y then False else True
 
 isTransitive r = if isEmpty r then property True else
     forAll (randomIndex r) \x ->
