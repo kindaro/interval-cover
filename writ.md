@@ -114,7 +114,7 @@ Not only that, we can define a filter:
     bruteForceCoveringChains base xs = filter (isMinimalCovering base) (List.subsequences xs)
 
 The complexity of these devices is crazy. Empirically, this brute force solution can munch through
-a set of 10 intervals, but not 20. But that much is enough to check a candidate fast algorithm
+a set of 10 intervals, but not 20. But this much is enough to check a candidate fast algorithm
 against.
 
 ### Onwards now!
