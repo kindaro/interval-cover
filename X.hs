@@ -361,11 +361,11 @@ chainsFromTo start end xs' = base ++ recursive
     xs = filter (not . isDisjointWith (interval (right start) (left end))) xs'
 
     base = do
-        x <- filter ((start `touches`) +* (`touches` end)) xs
+        x <- filter ((start `touches`) * (`touches` end)) xs
         return [x]
 
     recursive = do
-        z <- filter ((start `touches`)) xs
+        z <- filter ((start `touches`) * not . (`touches` end)) xs
         let xs' = filter (`isRightwardsOf` z) xs
         let start' = interval (right start) (right z)
         zs <- chainsFromTo start' end xs'
